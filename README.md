@@ -25,14 +25,36 @@ Makefile                          # build / activate / deploy convenience
 
 ## Activate on the EC2 host
 
-First-time:
+First-time (BOOTSTRAP — read before running). system-manager refuses to
+clobber files at `/etc/...` that aren't already under its management, so
+the existing unit files have to step aside before the first `switch`.
+Move them somewhere safe rather than deleting — recovery is fast if
+something goes wrong:
 
 ```bash
 ssh ubuntu@<host>
 git clone https://github.com/r33drichards/twitch-mc.git ~/twitch-mc
+
+# Park existing files out of the way
+sudo mkdir -p /var/backups/pre-twitch-mc/{system,user,sleet1213}
+for u in btone-audio btone-bot btone-stream pulse-game redis xorg-headless; do
+  sudo mv /etc/systemd/system/$u.service /var/backups/pre-twitch-mc/system/
+done
+sudo cp -a /etc/sleet1213 /var/backups/pre-twitch-mc/sleet1213/
+sudo rm /etc/sleet1213/nick-groups.json /etc/sleet1213/policies/*
+
+# First activation — services don't restart because unit text is identical
 cd ~/twitch-mc
 nix run github:numtide/system-manager -- switch --flake .#default --sudo
+
+# Sanity check: the same units now exist at the same paths
+for u in btone-audio btone-bot btone-stream pulse-game redis xorg-headless; do
+  systemctl status $u --no-pager | head -3
+done
 ```
+
+For the user units, see "Migrating the user units" below — they're a
+separate one-shot.
 
 Subsequent updates:
 
