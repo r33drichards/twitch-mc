@@ -1,0 +1,15 @@
+build/
+.gradle/
+run/
+.idea/
+*.iml
+.DS_Store
+node_modules/
+.btone/
+.direnv/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.log
+.claude/settings.local.json
