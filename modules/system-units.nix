@@ -18,6 +18,9 @@ in
     // unit "btone-bot"
     // unit "btone-stream"
     // unit "pulse-game"
-    // unit "redis"
     // unit "xorg-headless";
+  # Note: redis.service is intentionally NOT managed here. The host runs
+  # redis-server.service from /usr/lib/systemd/system/, installed by the
+  # Ubuntu redis-server package. Managing a duplicate redis.service alias
+  # via system-manager would conflict with apt's unit.
 }
