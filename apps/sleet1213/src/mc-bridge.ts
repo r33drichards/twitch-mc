@@ -26,24 +26,25 @@ import { loadNickGroups, resolveNickGroup, type NickGroup } from './nick-groups.
 
 type Config = {
   bridgeUrl: string;
-  bridgeToken: string;
+  bridgeToken: string | null;
   webhookUrl: string;
   group: NickGroup;
   msgPrefix: string;
   skipOverlay: boolean;
 };
 
-function loadBridgeAuth(): { url: string; token: string } {
+function loadBridgeAuth(): { url: string; token: string | null } {
   const cfgPath =
     process.env.BTONE_BRIDGE_CONFIG ?? '/var/lib/btone/config/btone-bridge.json';
   const raw = readFileSync(cfgPath, 'utf-8');
-  const parsed = JSON.parse(raw) as { port: number; token: string };
-  if (!parsed.port || !parsed.token) {
-    throw new Error(`btone bridge config at ${cfgPath} missing port/token`);
+  const parsed = JSON.parse(raw) as { port: number; token: string | null };
+  if (!parsed.port) {
+    throw new Error(`btone bridge config at ${cfgPath} missing port`);
   }
   return {
     url: `http://127.0.0.1:${parsed.port}`,
-    token: parsed.token,
+    // null/empty token is allowed: localhost-only mode skips auth.
+    token: parsed.token || null,
   };
 }
 
@@ -141,7 +142,9 @@ async function postToWebhook(
 
 async function streamChat(cfg: Config, signal: AbortSignal): Promise<void> {
   const url = `${cfg.bridgeUrl}/events`;
-  const headers = { Authorization: `Bearer ${cfg.bridgeToken}` };
+  const headers: Record<string, string> = cfg.bridgeToken
+    ? { Authorization: `Bearer ${cfg.bridgeToken}` }
+    : {};
   for await (const ev of readSse(url, headers, signal)) {
     if (ev.event !== 'chat') continue;
     let payload: { text?: string; overlay?: boolean };
