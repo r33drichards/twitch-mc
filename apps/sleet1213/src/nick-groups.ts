@@ -47,6 +47,17 @@ export const DEFAULT_ADMIN_CONFIG: AgentConfig = {
   includeUserMcpServers: true,
 };
 
+/**
+ * Least-privilege fallback used when an inbound request doesn't supply
+ * an agentConfig (e.g. scheduled prompts, internal calls). Mirrors the
+ * "public" group from /etc/sleet1213/nick-groups.json.
+ */
+export const DEFAULT_PUBLIC_CONFIG: AgentConfig = {
+  allowedTools: ['Skill', 'mcp__*'],
+  includePlugins: true,
+  includeUserMcpServers: false,
+};
+
 let _config: NickGroupsConfig | null = null;
 
 /**
