@@ -1,0 +1,17 @@
+[Unit]
+Description=sleet1213 Temporal worker (Claude Agent SDK)
+After=network-online.target sleet1213-temporal.service sleet1213-webhook.service
+Requires=sleet1213-temporal.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/sleet1213
+EnvironmentFile=/home/ubuntu/sleet1213/.env
+ExecStart=/usr/bin/node --loader ts-node/esm src/worker.ts
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=Twitch RTMP streamer (x11grab :99 + h264_nvenc)
+After=xorg-headless.service network-online.target btone-bot.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/btone-stream/env
+Environment=DISPLAY=:99
+Environment=PULSE_SERVER=unix:/tmp/pulse-game-audio
+ExecStartPre=/bin/sh -c 'test -n "$STREAM_KEY" || { echo "STREAM_KEY empty in /etc/btone-stream/env" >&2; exit 1; }'
+ExecStart=/usr/bin/ffmpeg -nostdin -loglevel warning -hide_banner \
+  -thread_queue_size 64 -f x11grab -framerate 30 -video_size 1280x720 -i :99 \
+  -thread_queue_size 64 -f pulse -i game_audio.monitor \
+  -c:v h264_nvenc -preset p4 -tune ll -b:v 3500k -maxrate 3500k -bufsize 7000k \
+  -g 60 -keyint_min 60 \
+  -fps_mode cfr \
+  -c:a aac -b:a 160k -ar 44100 \
+  -f flv rtmp://live.twitch.tv/app/${STREAM_KEY}
+Restart=on-failure
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

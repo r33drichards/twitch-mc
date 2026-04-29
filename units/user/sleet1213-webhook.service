@@ -1,0 +1,17 @@
+[Unit]
+Description=sleet1213 webhook (HTTP API + SSE streaming)
+After=network-online.target sleet1213-temporal.service
+Requires=sleet1213-temporal.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/sleet1213
+EnvironmentFile=/home/ubuntu/sleet1213/.env
+ExecStart=/usr/bin/node --loader ts-node/esm src/webhook.ts
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

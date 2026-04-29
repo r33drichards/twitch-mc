@@ -1,0 +1,11 @@
+{
+  "filesystem": {
+    "mode": "all",
+    "policies": [
+      {
+        "url": "file:///etc/sleet1213/policies/skill-filesystem.rego",
+        "rule": "data.mcp.filesystem.allow"
+      }
+    ]
+  }
+}

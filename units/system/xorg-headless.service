@@ -1,0 +1,16 @@
+[Unit]
+Description=Headless Xorg server (Nvidia GPU) for the btone bot
+After=network-online.target systemd-modules-load.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=-/bin/sh -c 'rm -f /tmp/.X99-lock /tmp/.X11-unix/X99'
+ExecStartPre=-/usr/bin/pkill -9 -f "Xorg :99"
+ExecStart=/usr/local/bin/xorg-robust.sh
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

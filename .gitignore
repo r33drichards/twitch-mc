@@ -1,0 +1,17 @@
+.DS_Store
+*.bak
+.env
+.env.*
+result
+result-*
+
+# Nix
+/.direnv
+
+# Nested apps build outputs (subtrees own their own .gitignore too,
+# but list common ones here so a stray top-level checkout stays clean).
+**/node_modules
+**/dist
+**/.gradle
+**/build
+**/.temporal-db

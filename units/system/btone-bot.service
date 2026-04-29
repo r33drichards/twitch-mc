@@ -1,0 +1,28 @@
+[Unit]
+Description=btone-mod-c Minecraft bot (headless, GPU-rendered)
+After=xorg-headless.service network-online.target sound.target
+Requires=xorg-headless.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=btone
+Group=btone
+WorkingDirectory=/var/lib/btone
+EnvironmentFile=-/etc/btone-bot.env
+Environment=DISPLAY=:99
+Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+Environment=XDG_RUNTIME_DIR=/run/user/1001
+Environment=AGENT_WEBHOOK_URL=http://127.0.0.1:8787/api/messages
+ExecStartPre=/usr/bin/test -f /var/lib/btone/mods/btone-mod-c-0.1.0.jar
+ExecStart=/var/lib/btone/.local/bin/portablemc --work-dir /var/lib/btone start fabric:1.21.8:0.19.2 \
+  --jvm /usr/bin/java --auth-anonymize \
+  -u ${BOT_USERNAME} -s ${BOT_SERVER_HOST} -p ${BOT_SERVER_PORT}
+ExecStartPost=/usr/local/bin/mc-fullscreen.sh
+Restart=on-failure
+RestartSec=15s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

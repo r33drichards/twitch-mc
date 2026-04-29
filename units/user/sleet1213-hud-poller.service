@@ -1,0 +1,15 @@
+[Unit]
+Description=sleet1213 schedule HUD poller (Temporal → CronHud JSON)
+After=network-online.target sleet1213-temporal.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/sleet1213
+EnvironmentFile=/home/ubuntu/sleet1213/.env
+ExecStart=/usr/bin/node --loader ts-node/esm src/schedule-hud-poller.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
