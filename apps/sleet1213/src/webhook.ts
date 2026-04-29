@@ -3,16 +3,12 @@ import { streamSSE } from 'hono/streaming';
 import { serve } from '@hono/node-server';
 import { Client, Connection } from '@temporalio/client';
 import { chatSession } from './workflows.js';
-import { userMessageSignal, closeSignal } from './signals.js';
+import { userMessageSignal } from './signals.js';
 import {
   ensureSchema,
   getMessages,
-  getSessions,
   createSession,
-  sessionBelongsTo,
-  renameSession,
-  setSessionArchived,
-  deleteSession,
+  sessionExists,
 } from './db.js';
 import { subscribeDeltas } from './publish.js';
 
@@ -21,7 +17,6 @@ type Vars = { userId: string };
 export function makeApp(deps: {
   signalWithStart: (wf: typeof chatSession, opts: any) => Promise<any>;
   taskQueue: string;
-  signalClose?: (workflowId: string) => Promise<void>;
 }) {
   const app = new Hono<{ Variables: Vars }>();
 
@@ -47,87 +42,37 @@ export function makeApp(deps: {
       return c.json({ error: 'sessionId and msg required' }, 400);
     }
 
-    const exists = await sessionBelongsTo(body.sessionId, userId);
-    if (!exists) {
+    // Shared session — any user can post to any session. Create the
+    // session row if it doesn't exist yet (using this user as the
+    // initial creator, but ownership isn't enforced).
+    if (!(await sessionExists(body.sessionId))) {
       await createSession(userId, body.sessionId);
-      const nowOwned = await sessionBelongsTo(body.sessionId, userId);
-      if (!nowOwned) {
-        return c.json({ error: 'session belongs to another user' }, 403);
-      }
     }
+
+    // agentConfig is optional — the IRC bridge passes it when nick groups
+    // are configured. It's carried per-message in the signal so different
+    // users get different agent capabilities within the same session.
+    const agentConfig = body.agentConfig ?? undefined;
 
     await deps.signalWithStart(chatSession, {
       workflowId: `chat:${body.sessionId}`,
       taskQueue: deps.taskQueue,
-      args: [body.sessionId, [], userId],
+      args: [body.sessionId, [], userId, /* seedSdkSessionId */ ''],
       signal: userMessageSignal,
-      signalArgs: [body.msg],
+      signalArgs: [body.msg, agentConfig],
     });
 
     return c.json({ ok: true });
   });
 
-  app.get('/sessions', async (c) => {
-    const userId = c.get('userId');
-    const sessions = await getSessions(userId);
-    return c.json({ sessions });
-  });
-
   app.get('/sessions/:sessionId/messages', async (c) => {
-    const userId = c.get('userId');
     const sessionId = c.req.param('sessionId');
-    if (!(await sessionBelongsTo(sessionId, userId))) {
-      return c.json({ error: 'not found' }, 404);
-    }
-    const messages = await getMessages(sessionId, userId);
+    const messages = await getMessages(sessionId);
     return c.json({ sessionId, messages });
   });
 
-  app.patch('/sessions/:sessionId', async (c) => {
-    const userId = c.get('userId');
-    const sessionId = c.req.param('sessionId');
-    const body = (await c.req.json().catch(() => null)) as
-      | { title?: unknown; archived?: unknown }
-      | null;
-    if (!body) return c.json({ error: 'invalid body' }, 400);
-
-    const hasTitle = typeof body.title === 'string';
-    const hasArchived = typeof body.archived === 'boolean';
-    if (!hasTitle && !hasArchived) {
-      return c.json({ error: 'title or archived required' }, 400);
-    }
-
-    if (hasTitle) {
-      const ok = await renameSession(sessionId, userId, body.title as string);
-      if (!ok) return c.json({ error: 'not found' }, 404);
-    }
-    if (hasArchived) {
-      const ok = await setSessionArchived(sessionId, userId, body.archived as boolean);
-      if (!ok) return c.json({ error: 'not found' }, 404);
-    }
-    return c.json({ ok: true });
-  });
-
-  app.delete('/sessions/:sessionId', async (c) => {
-    const userId = c.get('userId');
-    const sessionId = c.req.param('sessionId');
-    if (!(await sessionBelongsTo(sessionId, userId))) {
-      return c.json({ error: 'not found' }, 404);
-    }
-    try {
-      await deps.signalClose?.(`chat:${sessionId}`);
-    } catch { /* ignore */ }
-    const ok = await deleteSession(sessionId, userId);
-    if (!ok) return c.json({ error: 'not found' }, 404);
-    return c.json({ ok: true });
-  });
-
   app.get('/sessions/:sessionId/stream', async (c) => {
-    const userId = c.get('userId');
     const sessionId = c.req.param('sessionId');
-    if (!(await sessionBelongsTo(sessionId, userId))) {
-      return c.json({ error: 'not found' }, 404);
-    }
     const lastEventId = c.req.header('Last-Event-ID');
     const fromQuery = c.req.query('from');
     const from = lastEventId ?? fromQuery ?? '$';
@@ -165,11 +110,6 @@ async function main() {
   const app = makeApp({
     signalWithStart: (wf, opts) => client.workflow.signalWithStart(wf, opts) as any,
     taskQueue,
-    signalClose: async (workflowId) => {
-      try {
-        await client.workflow.getHandle(workflowId).signal(closeSignal);
-      } catch { /* ignore */ }
-    },
   });
 
   console.log(`Webhook listening on :${port}`);
