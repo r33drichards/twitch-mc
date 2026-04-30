@@ -12,7 +12,8 @@ in
   # shadow these and must be removed before the system-wide copies take
   # effect — see the migration steps in README.md.
   environment.etc =
-    unit "sleet1213-hud-poller"
+    unit "opencode-web"
+    // unit "sleet1213-hud-poller"
     // unit "sleet1213-irc"
     // unit "sleet1213-mc-bridge"
     // unit "sleet1213-temporal"

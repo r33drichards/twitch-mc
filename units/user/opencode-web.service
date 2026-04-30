@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenCode web UI (Bedrock)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/twitch-mc
+Environment=AWS_REGION=us-west-2
+Environment=AWS_DEFAULT_REGION=us-west-2
+Environment=PATH=/home/ubuntu/.opencode/bin:/usr/bin:/bin:/usr/local/bin
+ExecStart=/home/ubuntu/.opencode/bin/opencode web --port 4040 --hostname 127.0.0.1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
