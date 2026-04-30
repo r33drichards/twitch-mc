@@ -1,14 +1,19 @@
 [Unit]
 Description=Twitch RTMP streamer (x11grab :99 + h264_nvenc)
-After=xorg-headless.service network-online.target btone-bot.service
+After=xorg-headless.service network-online.target btone-bot.service btone-audio.service
 Wants=network-online.target
+Requires=btone-audio.service
 
 [Service]
 Type=simple
 User=root
 EnvironmentFile=/etc/btone-stream/env
 Environment=DISPLAY=:99
-Environment=PULSE_SERVER=unix:/tmp/pulse-game-audio
+# Use the btone-audio system PulseAudio (it now hosts both `mc` and
+# `game_audio` sinks). The old /tmp/pulse-game-audio socket came from
+# pulse-game.service which is structurally broken (D-Bus issue) and
+# no longer used.
+Environment=PULSE_SERVER=unix:/var/run/pulse/native
 ExecStartPre=/bin/sh -c 'test -n "$STREAM_KEY" || { echo "STREAM_KEY empty in /etc/btone-stream/env" >&2; exit 1; }'
 ExecStart=/usr/bin/ffmpeg -nostdin -loglevel warning -hide_banner \
   -thread_queue_size 64 -f x11grab -framerate 30 -video_size 1280x720 -i :99 \

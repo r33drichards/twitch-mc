@@ -1,5 +1,5 @@
 [Unit]
-Description=PulseAudio system instance with mc null sink (drives MC->ffmpeg audio path)
+Description=PulseAudio system instance with mc + game_audio null sinks (drives MC->ffmpeg audio path)
 After=network.target
 
 [Service]
@@ -7,7 +7,12 @@ Type=simple
 PrivateTmp=true
 RuntimeDirectory=pulse
 RuntimeDirectoryMode=0755
-ExecStart=/usr/bin/pulseaudio --system --disallow-module-loading=false --disallow-exit=true --disable-shm=false --exit-idle-time=-1 --log-target=journal --high-priority=true --realtime=true   --load="module-native-protocol-unix auth-anonymous=1 socket=/var/run/pulse/native"   --load="module-null-sink sink_name=mc sink_properties=device.description=mc-bot-sink"   --load="module-suspend-on-idle"
+# `mc` sink: receives Minecraft client audio for the agent to perceive.
+# `game_audio` sink: feeds btone-stream (ffmpeg captures game_audio.monitor →
+# Twitch RTMP). Replaces the broken pulse-game.service that used to run a
+# separate user-mode pulse at /tmp/pulse-game-audio — D-Bus issues made
+# that flaky, so we collapse both sinks into this one system pulse.
+ExecStart=/usr/bin/pulseaudio --system --disallow-module-loading=false --disallow-exit=true --disable-shm=false --exit-idle-time=-1 --log-target=journal --high-priority=true --realtime=true   --load="module-native-protocol-unix auth-anonymous=1 socket=/var/run/pulse/native"   --load="module-null-sink sink_name=mc sink_properties=device.description=mc-bot-sink"   --load="module-null-sink sink_name=game_audio sink_properties=device.description=game-audio-sink"   --load="module-suspend-on-idle"
 ExecStartPost=/bin/sh -c "sleep 1 && /usr/bin/pactl --server=unix:/var/run/pulse/native list short sinks >/dev/null"
 Restart=on-failure
 RestartSec=5s
