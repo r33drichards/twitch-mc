@@ -8,6 +8,13 @@ Type=simple
 WorkingDirectory=/home/ubuntu/twitch-mc
 Environment=AWS_REGION=us-west-2
 Environment=AWS_DEFAULT_REGION=us-west-2
+# AWS_PROFILE makes the AI SDK Bedrock provider walk ~/.aws/config,
+# which we configure with `credential_source = Ec2InstanceMetadata`
+# to pull short-lived creds from the btone-ec2-bedrock instance role.
+# Without this the @ai-sdk/amazon-bedrock provider errors with
+# "AWS access key ID setting is missing" — it doesn't fall back to
+# IMDS on its own the way boto3 does.
+Environment=AWS_PROFILE=default
 Environment=PATH=/home/ubuntu/.opencode/bin:/usr/bin:/bin:/usr/local/bin
 ExecStart=/home/ubuntu/.opencode/bin/opencode web --port 4040 --hostname 127.0.0.1
 Restart=on-failure
