@@ -109,15 +109,6 @@ interface ExecOutputResp {
 export async function fireScheduledJs(req: FireScheduledJsReq): Promise<void> {
   const echoPort = process.env.IRC_ECHO_PORT ?? '8790';
 
-  // Echo to IRC
-  try {
-    await fetch(`http://127.0.0.1:${echoPort}/echo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: `[scheduled-js:${req.scheduleId}] running...` }),
-    });
-  } catch { /* best-effort */ }
-
   // 1. Load previous heap for this schedule
   const previousHeap = await getScheduleHeap(req.scheduleId);
 
@@ -165,7 +156,7 @@ export async function fireScheduledJs(req: FireScheduledJsReq): Promise<void> {
     await setScheduleHeap(req.scheduleId, status.heap);
   }
 
-  // 5. Get console output and echo to IRC
+  // 5. Get console output
   let output = '';
   try {
     const outResp = await fetch(
@@ -177,27 +168,32 @@ export async function fireScheduledJs(req: FireScheduledJsReq): Promise<void> {
     }
   } catch { /* best-effort */ }
 
-  // Build a summary message for IRC
-  const truncatedOutput = output.length > 400 ? output.slice(0, 400) + '...' : output;
-  const statusEmoji = status.status === 'completed' ? 'done' : status.status;
-  let echoMsg = `[scheduled-js:${req.scheduleId}] ${statusEmoji}`;
-  if (truncatedOutput.trim()) {
-    echoMsg += ` | ${truncatedOutput.trim()}`;
-  }
-  if (status.error) {
-    echoMsg += ` | error: ${status.error}`;
-  }
+  // 6. Noop — skip IRC echo entirely when execution succeeded with no output
+  const hasOutput = output.trim().length > 0;
+  const failed = status.status !== 'completed';
 
-  try {
-    await fetch(`http://127.0.0.1:${echoPort}/echo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: echoMsg }),
-    });
-  } catch { /* best-effort */ }
+  if (hasOutput || failed) {
+    const truncatedOutput = output.length > 400 ? output.slice(0, 400) + '...' : output;
+    const statusLabel = failed ? status.status : 'done';
+    let echoMsg = `[scheduled-js:${req.scheduleId}] ${statusLabel}`;
+    if (hasOutput) {
+      echoMsg += ` | ${truncatedOutput.trim()}`;
+    }
+    if (status.error) {
+      echoMsg += ` | error: ${status.error}`;
+    }
+
+    try {
+      await fetch(`http://127.0.0.1:${echoPort}/echo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: echoMsg }),
+      });
+    } catch { /* best-effort */ }
+  }
 
   // Throw on failure so Temporal marks the activity as failed
-  if (status.status !== 'completed') {
+  if (failed) {
     throw new Error(
       `Scheduled JS execution ${execution_id} ${status.status}: ${status.error ?? 'unknown error'}`,
     );
