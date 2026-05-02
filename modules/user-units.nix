@@ -16,6 +16,7 @@ in
     // unit "sleet1213-hud-poller"
     // unit "sleet1213-irc"
     // unit "sleet1213-mc-bridge"
+    // unit "sleet1213-subtitle-bridge"
     // unit "sleet1213-temporal"
     // unit "sleet1213-webhook"
     // unit "sleet1213-worker";
