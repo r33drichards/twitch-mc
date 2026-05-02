@@ -57,6 +57,12 @@ ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS command TEXT;
 ALTER TABLE mcp_servers ADD COLUMN IF NOT EXISTS args JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE mcp_servers ALTER COLUMN url DROP NOT NULL;
 
+CREATE TABLE IF NOT EXISTS schedule_heaps (
+  schedule_id TEXT PRIMARY KEY,
+  heap        TEXT NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS memories (
   id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    TEXT        NOT NULL,
@@ -479,4 +485,36 @@ export async function loadMemoryContext(userId: string): Promise<string> {
   }
 
   return parts.join('\n');
+}
+
+/* ------------------------------------------------------------------ */
+/*  Schedule Heaps                                                    */
+/* ------------------------------------------------------------------ */
+
+/** Get the latest heap hash for a JS schedule. */
+export async function getScheduleHeap(scheduleId: string): Promise<string | null> {
+  const { rows } = await getPool().query<{ heap: string }>(
+    'SELECT heap FROM schedule_heaps WHERE schedule_id = $1',
+    [scheduleId],
+  );
+  return rows[0]?.heap ?? null;
+}
+
+/** Upsert the heap hash for a JS schedule after execution. */
+export async function setScheduleHeap(scheduleId: string, heap: string): Promise<void> {
+  await getPool().query(
+    `INSERT INTO schedule_heaps (schedule_id, heap)
+     VALUES ($1, $2)
+     ON CONFLICT (schedule_id)
+     DO UPDATE SET heap = $2, updated_at = now()`,
+    [scheduleId, heap],
+  );
+}
+
+/** Delete the heap tracking for a schedule (when schedule is deleted). */
+export async function deleteScheduleHeap(scheduleId: string): Promise<void> {
+  await getPool().query(
+    'DELETE FROM schedule_heaps WHERE schedule_id = $1',
+    [scheduleId],
+  );
 }

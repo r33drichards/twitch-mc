@@ -190,3 +190,22 @@ export async function scheduledPrompt(
   const taggedPrompt = `[SCHEDULED] ${prompt}`;
   await fireScheduledPrompt({ sessionId, userId, prompt: taggedPrompt });
 }
+
+// ---------------------------------------------------------------------------
+// scheduledJs — a short-lived workflow started by Temporal Schedules.
+// It executes JavaScript on the mcp-v8 HTTP sidecar with per-schedule
+// heap persistence. Each schedule gets its own V8 heap chain so variables
+// persist across executions.
+// ---------------------------------------------------------------------------
+const { fireScheduledJs } = proxyActivities<typeof scheduleActivities>({
+  // mcp-v8 execution_timeout is 120s, plus polling overhead
+  startToCloseTimeout: '3 minutes',
+  retry: { maximumAttempts: 2 },
+});
+
+export async function scheduledJs(
+  scheduleId: string,
+  code: string,
+): Promise<void> {
+  await fireScheduledJs({ scheduleId, code });
+}

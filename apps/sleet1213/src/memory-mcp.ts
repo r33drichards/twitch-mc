@@ -17,6 +17,7 @@ import {
   createMcpServer,
   deleteMcpServer,
   McpNameTakenError,
+  deleteScheduleHeap,
   type MemoryTier,
 } from './db.js';
 
@@ -307,13 +308,15 @@ export function createTedMcpServer(userId: string, opts?: TedMcpServerOptions) {
     ),
     tool(
       'schedule_delete',
-      'Delete a Temporal schedule by ID.',
+      'Delete a Temporal schedule by ID. Also cleans up any associated JS heap state.',
       { id: z.string().describe('The schedule ID to delete') },
       async (input) => {
         try {
           const client = await getScheduleClient();
           const handle = client.getHandle(input.id);
           await handle.delete();
+          // Clean up heap tracking for JS schedules (no-op for prompt schedules)
+          await deleteScheduleHeap(input.id).catch(() => {});
           return { content: [{ type: 'text', text: `Deleted schedule "${input.id}".` }] };
         } catch (err) {
           return { content: [{ type: 'text', text: `Failed to delete schedule: ${(err as Error).message}` }] };
@@ -332,6 +335,65 @@ export function createTedMcpServer(userId: string, opts?: TedMcpServerOptions) {
           return { content: [{ type: 'text', text: `Triggered schedule "${input.id}" — fires now.` }] };
         } catch (err) {
           return { content: [{ type: 'text', text: `Failed to trigger schedule: ${(err as Error).message}` }] };
+        }
+      },
+    ),
+    // ---- Scheduled JS tool ----
+    // Like schedule_create but runs JavaScript code directly on the mcp-v8
+    // HTTP sidecar instead of sending a prompt to the agent. Each schedule
+    // gets its own persistent V8 heap so variables survive across executions.
+    tool(
+      'schedule_create_js',
+      'Create a recurring or one-shot scheduled JavaScript execution. The code runs directly on the mcp-v8 runtime (same as run_js) — NOT through the agent. Each schedule gets its own persistent V8 heap, so variables set with globalThis.x = ... survive across executions. Use this for lightweight recurring tasks that don\'t need the full agent (e.g. polling, data collection, periodic bot actions via mcp.callTool).',
+      {
+        id: z.string().describe('Unique schedule identifier (e.g. "health-check")'),
+        cron: z.string().optional().describe('Cron expression for recurring schedule (e.g. "*/5 * * * *")'),
+        at: z.string().optional().describe('ISO 8601 timestamp for one-shot schedule (e.g. "2026-04-28T15:00:00Z")'),
+        code: z.string().describe('JavaScript code to execute. Has access to globalThis for persistent state, console.log for output, fetch() for HTTP, and mcp.callTool(\'btone\', method, params) for Minecraft bot control.'),
+      },
+      async (input) => {
+        if (!input.cron && !input.at) {
+          return { content: [{ type: 'text', text: 'Must provide either cron (recurring) or at (one-shot).' }] };
+        }
+        try {
+          const client = await getScheduleClient();
+          const spec: any = {};
+          if (input.cron) {
+            spec.cronExpressions = [input.cron];
+          } else if (input.at) {
+            const d = new Date(input.at);
+            if (isNaN(d.getTime())) {
+              return { content: [{ type: 'text', text: `Invalid timestamp: "${input.at}"` }] };
+            }
+            const cronOnce = `${d.getUTCMinutes()} ${d.getUTCHours()} ${d.getUTCDate()} ${d.getUTCMonth() + 1} * ${d.getUTCFullYear()}`;
+            spec.cronExpressions = [cronOnce];
+          }
+          const handle = await client.create({
+            scheduleId: input.id,
+            spec,
+            action: {
+              type: 'startWorkflow' as const,
+              workflowType: 'scheduledJs',
+              taskQueue: TASK_QUEUE,
+              args: [input.id, input.code],
+            },
+            policies: {
+              overlap: ScheduleOverlapPolicy.SKIP,
+            },
+            state: input.at ? { remainingActions: 1 } : undefined,
+          });
+          const kind = input.cron ? `recurring (${input.cron})` : `one-shot (${input.at})`;
+          const codePreview = input.code.length > 80 ? input.code.slice(0, 80) + '...' : input.code;
+          return {
+            content: [{
+              type: 'text',
+              text: `Created JS schedule "${handle.scheduleId}" — ${kind}\n` +
+                    `  heap: per-schedule persistent (schedule:${input.id})\n` +
+                    `  code: ${codePreview}`,
+            }],
+          };
+        } catch (err) {
+          return { content: [{ type: 'text', text: `Failed to create JS schedule: ${(err as Error).message}` }] };
         }
       },
     ),
