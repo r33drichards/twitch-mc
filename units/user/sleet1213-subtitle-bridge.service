@@ -1,0 +1,17 @@
+[Unit]
+Description=sleet1213 subtitle bridge (btone sound SSE → webhook batched)
+After=network-online.target sleet1213-webhook.service
+Requires=sleet1213-webhook.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/sleet1213
+EnvironmentFile=/home/ubuntu/sleet1213/.env
+ExecStart=/usr/bin/node --loader ts-node/esm src/subtitle-bridge.ts
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

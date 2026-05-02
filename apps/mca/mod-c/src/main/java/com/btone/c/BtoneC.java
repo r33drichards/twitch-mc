@@ -3,6 +3,7 @@ package com.btone.c;
 import com.btone.c.events.EventBus;
 import com.btone.c.events.GameEvents;
 import com.btone.c.events.SseEndpoint;
+import com.btone.c.events.SubtitleEvents;
 import com.btone.c.handlers.BaritoneHandlers;
 import com.btone.c.handlers.ChatHandlers;
 import com.btone.c.handlers.ContainerHandlers;
@@ -169,6 +170,10 @@ public final class BtoneC implements ClientModInitializer {
                         LOG.warn("failed to register custom meteor module(s): {}", modErr.toString());
                     }
                 }
+
+                // Register subtitle (sound event) listener on the SoundManager.
+                // Must happen after CLIENT_STARTED so SoundManager is initialised.
+                SubtitleEvents.register(eventBus);
             });
 
             ClientLifecycleEvents.CLIENT_STOPPING.register(c -> {
