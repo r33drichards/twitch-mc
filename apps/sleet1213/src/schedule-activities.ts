@@ -73,13 +73,42 @@ export async function fireScheduledPrompt(req: FireScheduledPromptReq): Promise<
 // Requires a long-lived mcp-v8 sidecar on MCP_V8_URL (default
 // http://127.0.0.1:25700). The sidecar exposes:
 //   POST /api/exec          → { execution_id }
-//   GET  /api/executions/ID → { status, result, error }
+//   GET  /api/executions/ID → { status, result, error, heap }
 //   GET  /api/executions/ID/output → { data }
+//
+// Heap persistence: mcp-v8 heaps are content-addressed. Each execution
+// returns a new heap hash. We store the latest hash in a small JSON map
+// at HEAP_MAP_PATH so the next fire of the same schedule resumes from
+// where it left off.
 // ---------------------------------------------------------------------------
+
+import { readFileSync, writeFileSync, mkdirSync as mkdirSyncFs } from 'node:fs';
+import { dirname } from 'node:path';
 
 const MCP_V8_URL = process.env.MCP_V8_URL ?? 'http://127.0.0.1:25700';
 const RUN_JS_POLL_MS = 500;
 const RUN_JS_TIMEOUT_MS = Number(process.env.RUN_JS_TIMEOUT_MS ?? 120_000);
+const HEAP_MAP_PATH = process.env.HEAP_MAP_PATH ?? '/home/ubuntu/.local/share/sleet1213/mcp-v8-heap-map.json';
+
+/** Load the heap-name → content-hash map from disk. */
+function loadHeapMap(): Record<string, string> {
+  try {
+    return JSON.parse(readFileSync(HEAP_MAP_PATH, 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+/** Persist the heap-name → content-hash map to disk (atomic via rename). */
+function saveHeapMap(map: Record<string, string>): void {
+  try {
+    mkdirSyncFs(dirname(HEAP_MAP_PATH), { recursive: true });
+    const tmp = `${HEAP_MAP_PATH}.tmp`;
+    writeFileSync(tmp, JSON.stringify(map, null, 2));
+    const { renameSync } = require('node:fs');
+    renameSync(tmp, HEAP_MAP_PATH);
+  } catch { /* best-effort */ }
+}
 
 export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<void> {
   const echoPort = process.env.IRC_ECHO_PORT ?? '8790';
@@ -93,9 +122,17 @@ export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<vo
     });
   } catch { /* best-effort */ }
 
-  // 1. Submit the JS code to mcp-v8 (with optional persistent heap)
-  const execBody: Record<string, any> = { code: req.code };
-  if (req.heap) execBody.heap = req.heap;
+  // 1. Resolve the heap: look up the latest content-hash for this heap name
+  const heapName = req.heap;
+  let heapHash: string | undefined;
+  if (heapName) {
+    const map = loadHeapMap();
+    heapHash = map[heapName];
+  }
+
+  // 2. Submit the JS code to mcp-v8
+  const execBody: Record<string, any> = { code: req.code, session: heapName };
+  if (heapHash) execBody.heap = heapHash;
   const execResp = await fetch(`${MCP_V8_URL}/api/exec`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -107,11 +144,12 @@ export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<vo
   }
   const { execution_id } = (await execResp.json()) as { execution_id: string };
 
-  // 2. Poll until completion or timeout
+  // 3. Poll until completion or timeout
   const deadline = Date.now() + RUN_JS_TIMEOUT_MS;
   let status = '';
   let result: string | null = null;
   let error: string | null = null;
+  let outputHeapHash: string | null = null;
 
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, RUN_JS_POLL_MS));
@@ -123,11 +161,13 @@ export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<vo
       status: string;
       result?: string | null;
       error?: string | null;
+      heap?: string | null;
     };
     status = info.status;
     if (status === 'completed' || status === 'failed' || status === 'cancelled') {
       result = info.result ?? null;
       error = info.error ?? null;
+      outputHeapHash = info.heap ?? null;
       break;
     }
   }
@@ -140,7 +180,14 @@ export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<vo
     throw new Error(`mcp-v8 execution ${execution_id} timed out after ${RUN_JS_TIMEOUT_MS}ms`);
   }
 
-  // 3. Fetch full output (console.log, return value, etc.)
+  // 4. Persist the new heap hash so the next fire resumes from this state
+  if (heapName && outputHeapHash) {
+    const map = loadHeapMap();
+    map[heapName] = outputHeapHash;
+    saveHeapMap(map);
+  }
+
+  // 5. Fetch full output (console.log, return value, etc.)
   let output = '';
   try {
     const outResp = await fetch(`${MCP_V8_URL}/api/executions/${execution_id}/output`);
@@ -155,7 +202,7 @@ export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<vo
     ? `[scheduled-js error] ${error}`
     : `[scheduled-js] ${(output || result || '(no output)').slice(0, 800)}`;
 
-  // 4. Echo result to IRC
+  // 6. Echo result to IRC
   try {
     await fetch(`http://127.0.0.1:${echoPort}/echo`, {
       method: 'POST',
@@ -164,7 +211,7 @@ export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<vo
     });
   } catch { /* best-effort */ }
 
-  // 5. Post the result into the agent session so the agent sees it
+  // 7. Post the result into the agent session so the agent sees it
   const webhookUrl = process.env.WEBHOOK_URL ?? 'http://127.0.0.1:8787';
   const visibleMsg = `scheduler: ${summary}`;
 
