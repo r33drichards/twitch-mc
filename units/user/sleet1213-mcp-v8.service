@@ -1,0 +1,20 @@
+[Unit]
+Description=mcp-v8 HTTP sidecar for scheduled JS execution
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mcp-v8 \
+    --stateless \
+    --http-port 25700 \
+    --execution-timeout 120 \
+    --policies-json /etc/sleet1213/policies/skills-fs.json \
+    --mcp-server btone=stdio:node:/home/ubuntu/mca-src/bin/btone-mcp-bridge.mjs
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

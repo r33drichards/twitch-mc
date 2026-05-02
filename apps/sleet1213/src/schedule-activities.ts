@@ -11,6 +11,12 @@ export interface FireScheduledPromptReq {
   prompt: string;
 }
 
+export interface FireScheduledRunJsReq {
+  sessionId: string;
+  userId: string;
+  code: string;
+}
+
 /**
  * Posts a message to the local webhook /message endpoint — the same path
  * the IRC bridge uses. This lets a Temporal Schedule inject a prompt into
@@ -39,6 +45,124 @@ export async function fireScheduledPrompt(req: FireScheduledPromptReq): Promise<
   // listener) shows the trigger. The message format mimics what a human
   // would type: "scheduler: <prompt>".
   const visibleMsg = `scheduler: ${req.prompt}`;
+
+  const resp = await fetch(`${webhookUrl}/message`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-User-ID': req.userId,
+    },
+    body: JSON.stringify({
+      sessionId: req.sessionId,
+      msg: visibleMsg,
+    }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`webhook /message returned ${resp.status}: ${text}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// fireScheduledRunJs — execute JavaScript directly via the mcp-v8 HTTP API,
+// then post the output into the agent session so the result is visible in
+// chat and the agent can react to it.
+//
+// Requires a long-lived mcp-v8 sidecar on MCP_V8_URL (default
+// http://127.0.0.1:25700). The sidecar exposes:
+//   POST /api/exec          → { execution_id }
+//   GET  /api/executions/ID → { status, result, error }
+//   GET  /api/executions/ID/output → { data }
+// ---------------------------------------------------------------------------
+
+const MCP_V8_URL = process.env.MCP_V8_URL ?? 'http://127.0.0.1:25700';
+const RUN_JS_POLL_MS = 500;
+const RUN_JS_TIMEOUT_MS = Number(process.env.RUN_JS_TIMEOUT_MS ?? 120_000);
+
+export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<void> {
+  const echoPort = process.env.IRC_ECHO_PORT ?? '8790';
+
+  // Echo start to IRC
+  try {
+    await fetch(`http://127.0.0.1:${echoPort}/echo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: `[scheduled-js] executing…` }),
+    });
+  } catch { /* best-effort */ }
+
+  // 1. Submit the JS code to mcp-v8
+  const execResp = await fetch(`${MCP_V8_URL}/api/exec`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: req.code }),
+  });
+  if (!execResp.ok) {
+    const text = await execResp.text().catch(() => '');
+    throw new Error(`mcp-v8 /api/exec returned ${execResp.status}: ${text}`);
+  }
+  const { execution_id } = (await execResp.json()) as { execution_id: string };
+
+  // 2. Poll until completion or timeout
+  const deadline = Date.now() + RUN_JS_TIMEOUT_MS;
+  let status = '';
+  let result: string | null = null;
+  let error: string | null = null;
+
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, RUN_JS_POLL_MS));
+    const pollResp = await fetch(`${MCP_V8_URL}/api/executions/${execution_id}`);
+    if (!pollResp.ok) {
+      throw new Error(`mcp-v8 poll returned ${pollResp.status}`);
+    }
+    const info = (await pollResp.json()) as {
+      status: string;
+      result?: string | null;
+      error?: string | null;
+    };
+    status = info.status;
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      result = info.result ?? null;
+      error = info.error ?? null;
+      break;
+    }
+  }
+
+  if (status !== 'completed' && status !== 'failed' && status !== 'cancelled') {
+    // Timed out — attempt to cancel
+    try {
+      await fetch(`${MCP_V8_URL}/api/executions/${execution_id}/cancel`, { method: 'POST' });
+    } catch { /* best-effort */ }
+    throw new Error(`mcp-v8 execution ${execution_id} timed out after ${RUN_JS_TIMEOUT_MS}ms`);
+  }
+
+  // 3. Fetch full output (console.log, return value, etc.)
+  let output = '';
+  try {
+    const outResp = await fetch(`${MCP_V8_URL}/api/executions/${execution_id}/output`);
+    if (outResp.ok) {
+      const page = (await outResp.json()) as { data?: string };
+      output = page.data ?? '';
+    }
+  } catch { /* best-effort */ }
+
+  // Build a summary for the agent session
+  const summary = error
+    ? `[scheduled-js error] ${error}`
+    : `[scheduled-js] ${(output || result || '(no output)').slice(0, 800)}`;
+
+  // 4. Echo result to IRC
+  try {
+    await fetch(`http://127.0.0.1:${echoPort}/echo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: summary.slice(0, 400) }),
+    });
+  } catch { /* best-effort */ }
+
+  // 5. Post the result into the agent session so the agent sees it
+  const webhookUrl = process.env.WEBHOOK_URL ?? 'http://127.0.0.1:8787';
+  const visibleMsg = `scheduler: ${summary}`;
 
   const resp = await fetch(`${webhookUrl}/message`, {
     method: 'POST',

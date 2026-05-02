@@ -11,6 +11,14 @@
  *     --prompt "Run the farm-loop skill: /farm-loop"
  *
  *   node --loader ts-node/esm src/schedule-cli.ts create \
+ *     --id auto-harvest \
+ *     --cron "0 *\/2 * * *" \
+ *     --session twitch-sleet1213 \
+ *     --user lokvolt \
+ *     --type run_js \
+ *     --prompt 'const s = await mcp.callTool("btone","player_state",{}); return s;'
+ *
+ *   node --loader ts-node/esm src/schedule-cli.ts create \
  *     --id one-shot-reminder \
  *     --at "2026-04-28T15:00:00Z" \
  *     --session twitch-sleet1213 \
@@ -52,14 +60,20 @@ async function create(args: Record<string, string>) {
   const prompt = args.prompt;
   const cron = args.cron;
   const at = args.at; // ISO timestamp for one-off
+  const type = (args.type ?? 'prompt') as 'prompt' | 'run_js';
 
   if (!id || !sessionId || !userId || !prompt) {
     console.error('Required: --id, --session, --user, --prompt');
     console.error('Plus either --cron "M H D M W" or --at "ISO-timestamp"');
+    console.error('Optional: --type prompt|run_js (default: prompt)');
     process.exit(1);
   }
   if (!cron && !at) {
     console.error('Must provide either --cron or --at');
+    process.exit(1);
+  }
+  if (type !== 'prompt' && type !== 'run_js') {
+    console.error('--type must be "prompt" or "run_js"');
     process.exit(1);
   }
 
@@ -84,7 +98,7 @@ async function create(args: Record<string, string>) {
       type: 'startWorkflow' as const,
       workflowType: 'scheduledPrompt',
       taskQueue: TASK_QUEUE,
-      args: [sessionId, userId, prompt] as Parameters<typeof scheduledPrompt>,
+      args: [sessionId, userId, prompt, type] as Parameters<typeof scheduledPrompt>,
     },
     policies: {
       overlap: ScheduleOverlapPolicy.SKIP,
@@ -93,9 +107,10 @@ async function create(args: Record<string, string>) {
   });
 
   const kind = cron ? `recurring (${cron})` : `one-shot (${at})`;
-  console.log(`✓ Created schedule "${handle.scheduleId}" — ${kind}`);
+  const typeLabel = type === 'run_js' ? ' [run_js]' : '';
+  console.log(`✓ Created schedule "${handle.scheduleId}" — ${kind}${typeLabel}`);
   console.log(`  session: ${sessionId}, user: ${userId}`);
-  console.log(`  prompt: ${prompt}`);
+  console.log(`  ${type === 'run_js' ? 'code' : 'prompt'}: ${prompt}`);
 }
 
 async function list() {
@@ -171,7 +186,7 @@ async function main() {
       console.error('Usage: schedule-cli <create|list|delete|trigger> [options]');
       console.error('');
       console.error('Commands:');
-      console.error('  create  --id NAME --session ID --user ID --prompt TEXT (--cron EXPR | --at ISO)');
+      console.error('  create  --id NAME --session ID --user ID --prompt TEXT (--cron EXPR | --at ISO) [--type prompt|run_js]');
       console.error('  list');
       console.error('  delete  --id NAME');
       console.error('  trigger --id NAME');
