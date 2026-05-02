@@ -61,11 +61,12 @@ async function create(args: Record<string, string>) {
   const cron = args.cron;
   const at = args.at; // ISO timestamp for one-off
   const type = (args.type ?? 'prompt') as 'prompt' | 'run_js';
+  const heap = type === 'run_js' ? (args.heap ?? id) : undefined;
 
   if (!id || !sessionId || !userId || !prompt) {
     console.error('Required: --id, --session, --user, --prompt');
     console.error('Plus either --cron "M H D M W" or --at "ISO-timestamp"');
-    console.error('Optional: --type prompt|run_js (default: prompt)');
+    console.error('Optional: --type prompt|run_js (default: prompt), --heap NAME');
     process.exit(1);
   }
   if (!cron && !at) {
@@ -98,7 +99,7 @@ async function create(args: Record<string, string>) {
       type: 'startWorkflow' as const,
       workflowType: 'scheduledPrompt',
       taskQueue: TASK_QUEUE,
-      args: [sessionId, userId, prompt, type] as Parameters<typeof scheduledPrompt>,
+      args: [sessionId, userId, prompt, type, heap] as Parameters<typeof scheduledPrompt>,
     },
     policies: {
       overlap: ScheduleOverlapPolicy.SKIP,
@@ -107,7 +108,7 @@ async function create(args: Record<string, string>) {
   });
 
   const kind = cron ? `recurring (${cron})` : `one-shot (${at})`;
-  const typeLabel = type === 'run_js' ? ' [run_js]' : '';
+  const typeLabel = type === 'run_js' ? ` [run_js, heap="${heap}"]` : '';
   console.log(`✓ Created schedule "${handle.scheduleId}" — ${kind}${typeLabel}`);
   console.log(`  session: ${sessionId}, user: ${userId}`);
   console.log(`  ${type === 'run_js' ? 'code' : 'prompt'}: ${prompt}`);
@@ -186,7 +187,7 @@ async function main() {
       console.error('Usage: schedule-cli <create|list|delete|trigger> [options]');
       console.error('');
       console.error('Commands:');
-      console.error('  create  --id NAME --session ID --user ID --prompt TEXT (--cron EXPR | --at ISO) [--type prompt|run_js]');
+      console.error('  create  --id NAME --session ID --user ID --prompt TEXT (--cron EXPR | --at ISO) [--type prompt|run_js] [--heap NAME]');
       console.error('  list');
       console.error('  delete  --id NAME');
       console.error('  trigger --id NAME');

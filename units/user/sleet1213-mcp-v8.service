@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/mcp-v8 \
-    --stateless \
+    --directory-path /home/ubuntu/.local/share/sleet1213/mcp-v8-heaps \
     --http-port 25700 \
     --execution-timeout 120 \
     --policies-json /etc/sleet1213/policies/skills-fs.json \

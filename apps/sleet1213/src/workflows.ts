@@ -194,9 +194,10 @@ export async function scheduledPrompt(
   userId: string,
   prompt: string,
   type: 'prompt' | 'run_js' = 'prompt',
+  heap?: string,
 ): Promise<void> {
   if (type === 'run_js') {
-    await fireScheduledRunJs({ sessionId, userId, code: prompt });
+    await fireScheduledRunJs({ sessionId, userId, code: prompt, heap });
   } else {
     const taggedPrompt = `[SCHEDULED] ${prompt}`;
     await fireScheduledPrompt({ sessionId, userId, prompt: taggedPrompt });

@@ -15,6 +15,8 @@ export interface FireScheduledRunJsReq {
   sessionId: string;
   userId: string;
   code: string;
+  /** Named V8 heap for persistent state across executions. */
+  heap?: string;
 }
 
 /**
@@ -91,11 +93,13 @@ export async function fireScheduledRunJs(req: FireScheduledRunJsReq): Promise<vo
     });
   } catch { /* best-effort */ }
 
-  // 1. Submit the JS code to mcp-v8
+  // 1. Submit the JS code to mcp-v8 (with optional persistent heap)
+  const execBody: Record<string, any> = { code: req.code };
+  if (req.heap) execBody.heap = req.heap;
   const execResp = await fetch(`${MCP_V8_URL}/api/exec`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: req.code }),
+    body: JSON.stringify(execBody),
   });
   if (!execResp.ok) {
     const text = await execResp.text().catch(() => '');
