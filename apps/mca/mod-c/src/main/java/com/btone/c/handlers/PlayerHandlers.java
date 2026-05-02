@@ -26,6 +26,7 @@ public final class PlayerHandlers {
         r.register("player.stairs_up", movement(MovementTasks.Mode.STAIRS_UP));
         r.register("player.set_rotation", setRotation());
         r.register("player.press_key", pressKey());
+        r.register("player.set_hotbar_slot", setHotbarSlot());
         r.register("player.teleport", teleport());
         r.register("player.set_velocity", setVelocity());
     }
@@ -105,6 +106,22 @@ public final class PlayerHandlers {
             ObjectNode n = M.createObjectNode();
             n.put("key", key);
             n.put("pressed", kb.isPressed());
+            return n;
+        });
+    }
+
+    private static RpcHandler setHotbarSlot() {
+        return params -> ClientThread.call(TIMEOUT_MS, () -> {
+            int slot = params.get("slot").asInt();
+            if (slot < 0 || slot > 8) {
+                throw new IllegalArgumentException("slot must be 0-8, got: " + slot);
+            }
+            var mc = MinecraftClient.getInstance();
+            var p = mc.player;
+            if (p == null) throw new IllegalStateException("no_player");
+            p.getInventory().setSelectedSlot(slot);
+            ObjectNode n = M.createObjectNode();
+            n.put("selectedSlot", slot);
             return n;
         });
     }

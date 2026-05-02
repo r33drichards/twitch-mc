@@ -8,6 +8,7 @@ import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalXZ;
 import baritone.api.pathing.goals.GoalYLevel;
 import baritone.api.utils.SettingsUtil;
+import com.btone.c.BtoneC;
 import com.btone.c.ClientThread;
 import com.btone.c.rpc.RpcRouter;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -92,7 +93,8 @@ public final class BaritoneHandlers {
             }
             return n;
         }));
-        r.register("baritone.mine", params -> ClientThread.call(1_000, () -> {
+        r.register("baritone.mine", params -> {
+            // Parse on the caller thread so validation errors surface immediately.
             int q = params.path("quantity").asInt(-1);
             JsonNode blocksNode = params.get("blocks");
             if (blocksNode == null || !blocksNode.isArray() || blocksNode.isEmpty()) {
@@ -107,12 +109,25 @@ public final class BaritoneHandlers {
                 blocks.add(block);
             }
             if (blocks.isEmpty()) throw new IllegalArgumentException("no_valid_blocks");
-            primary().getMineProcess().mine(q, blocks.toArray(new Block[0]));
+            // Use the command executor thread. getMineProcess().mine() needs
+            // BlockStateInterface which "should" be on the client thread, but
+            // running it there freezes the entire render loop for 30+ seconds.
+            // The command executor is a better compromise — it may occasionally
+            // throw but at least won't freeze the game.
+            final int quantity = q;
+            final Block[] blockArr = blocks.toArray(new Block[0]);
+            COMMAND_EXEC.submit(() -> {
+                try {
+                    primary().getMineProcess().mine(quantity, blockArr);
+                } catch (Throwable t) {
+                    BtoneC.LOG.warn("baritone.mine failed: {}", t.toString());
+                }
+            });
             ObjectNode n = M.createObjectNode();
-            n.put("started", true);
+            n.put("queued", true);
             n.put("count", blocks.size());
             return n;
-        }));
+        });
         r.register("baritone.follow", params -> ClientThread.call(1_000, () -> {
             String name = params.get("entityName").asText();
             primary().getFollowProcess().follow(e -> e.getName().getString().equals(name));
@@ -125,22 +140,16 @@ public final class BaritoneHandlers {
             throw new UnsupportedOperationException("baritone.build not implemented in v0.1");
         });
         r.register("baritone.command", params -> {
-            // Direct entry into Baritone's command manager. Run on a dedicated
-            // worker thread (NOT the client thread) so the parser/scanner can't
-            // jam the client tick. Fire-and-forget.
-            //
-            // Caveat: commands that internally construct a BlockStateInterface
-            // (notably `mine ...`) throw "must be constructed on the main thread"
-            // here. Routing them through ClientThread.run instead made things
-            // WORSE — baritone's mine setup ends up locking the client thread
-            // for many seconds, freezing the whole game. So `mine` from this
-            // RPC path is currently unusable; agents should use a manual
-            // world.mine_block loop instead.
+            // Direct entry into Baritone's command manager. Runs on a
+            // dedicated worker thread (NOT the client thread) so it can't
+            // jam the render tick. Fire-and-forget.
             String text = params.get("text").asText();
             COMMAND_EXEC.submit(() -> {
                 try {
                     primary().getCommandManager().execute(text);
-                } catch (Throwable ignored) {}
+                } catch (Throwable t) {
+                    BtoneC.LOG.warn("baritone.command failed: {} — {}", text, t.toString());
+                }
             });
             ObjectNode n = M.createObjectNode();
             n.put("queued", true);

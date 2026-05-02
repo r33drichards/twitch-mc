@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "amazon-bedrock/us.anthropic.claude-opus-4-6-v1",
+  "small_model": "amazon-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "provider": {
+    "amazon-bedrock": {
+      "options": {
+        "region": "us-west-2",
+        "profile": "default"
+      }
+    },
+    "ollama": {
+      "options": {
+        "baseURL": "http://127.0.0.1:11434/v1"
+      },
+      "models": {
+        "qwen3.5:9b": {
+          "name": "Qwen3.5 9B (local)",
+          "tool_call": true,
+          "reasoning": false
+        },
+        "qwen2.5-coder:14b-instruct-q4_K_M": {
+          "name": "Qwen2.5 Coder 14B (local)",
+          "tool_call": true,
+          "reasoning": false
+        }
+      }
+    }
+  }
+}

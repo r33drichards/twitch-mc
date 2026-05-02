@@ -4,8 +4,19 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.OutputStream;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
-/** Server-Sent Events endpoint. One subscription per HTTP request, blocks the request thread. */
+/**
+ * Server-Sent Events endpoint. One subscription per HTTP request,
+ * blocks the request thread.
+ *
+ * Events from the EventBus arrive on arbitrary threads (Render thread
+ * for chat, Baritone thread for path, etc.). The subscriber enqueues
+ * events into a thread-safe queue; this handler's thread is the ONLY
+ * writer to the HTTP output stream, eliminating the concurrent-write
+ * race that was silently dropping chat events.
+ */
 public final class SseEndpoint {
     private final EventBus bus;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -21,33 +32,40 @@ public final class SseEndpoint {
             return;
         }
         OutputStream out = ex.getResponseBody();
-        var sub = bus.subscribe(ev -> {
-            try {
-                String line = "event: " + ev.type() + "\n"
-                        + "data: " + mapper.writeValueAsString(ev) + "\n\n";
-                out.write(line.getBytes());
-                out.flush();
-            } catch (Throwable ignored) {
-                // client disconnected; will be cleaned up by surrounding loop on next sleep
-            }
-        });
+
+        // Thread-safe queue: subscriber (any thread) enqueues; this thread dequeues.
+        var queue = new LinkedBlockingQueue<EventBus.Event>();
+        var sub = bus.subscribe(queue::add);
+
         try {
-            // Heartbeat keeps proxies from idle-timing the connection and lets us
-            // detect a dropped client (write throws IOException). Short interval
-            // matters: each open stream pins a handler thread, and a dead client
-            // doesn't release that thread until the next failed write. With
-            // multiple SSE consumers (mc-bridge, mcp-v8 sub-server) this is the
-            // difference between freeing a stale slot in 5 seconds vs 30, and
-            // the http server has bounded concurrency.
             while (true) {
-                Thread.sleep(5_000);
-                out.write(": keepalive\n\n".getBytes());
-                out.flush();
+                // Block up to 5 seconds waiting for the next event.
+                EventBus.Event ev = queue.poll(5, TimeUnit.SECONDS);
+                if (ev == null) {
+                    // No events in 5 seconds — send keepalive to detect dead clients.
+                    out.write(": keepalive\n\n".getBytes());
+                    out.flush();
+                } else {
+                    // Write the event, then drain any queued events for throughput.
+                    writeEvent(out, ev);
+                    EventBus.Event next;
+                    while ((next = queue.poll()) != null) {
+                        writeEvent(out, next);
+                    }
+                    out.flush();
+                }
             }
         } catch (Throwable ignored) {
+            // Client disconnected or stream error — clean up.
         } finally {
             try { sub.close(); } catch (Throwable ignored) {}
             try { out.close(); } catch (Throwable ignored) {}
         }
+    }
+
+    private void writeEvent(OutputStream out, EventBus.Event ev) throws Exception {
+        String line = "event: " + ev.type() + "\n"
+                + "data: " + mapper.writeValueAsString(ev) + "\n\n";
+        out.write(line.getBytes());
     }
 }

@@ -13,22 +13,26 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
- * Loopback-only HTTP server with bearer-token auth applied to every route.
+ * Loopback-only HTTP server with optional bearer-token auth.
  *
- * The auth check runs before the route handler. Route handlers are responsible
- * for sending their own response; if a handler throws, we send 500 with the
+ * When {@code token} is null or empty, auth is skipped entirely — safe because
+ * the server only binds to 127.0.0.1. Route handlers are responsible for
+ * sending their own response; if a handler throws, we send 500 with the
  * error message escaped into JSON.
  */
 public final class BtoneHttpServer {
     private final HttpServer server;
 
     public BtoneHttpServer(int port, String token, Map<String, Consumer<HttpExchange>> routes) throws IOException {
+        final boolean authEnabled = token != null && !token.isEmpty();
         this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         routes.forEach((path, handler) -> server.createContext(path, ex -> {
-            Auth.Result a = Auth.check(ex.getRequestHeaders(), token);
-            if (a != Auth.Result.OK) {
-                write(ex, 401, "{\"error\":\"unauthorized\"}");
-                return;
+            if (authEnabled) {
+                Auth.Result a = Auth.check(ex.getRequestHeaders(), token);
+                if (a != Auth.Result.OK) {
+                    write(ex, 401, "{\"error\":\"unauthorized\"}");
+                    return;
+                }
             }
             try {
                 handler.accept(ex);

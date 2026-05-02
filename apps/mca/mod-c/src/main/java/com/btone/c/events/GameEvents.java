@@ -15,13 +15,30 @@ public final class GameEvents {
     private GameEvents() {}
 
     public static void register(EventBus bus) {
+        // NOTE: Chat messages from Baritone and Meteor bypass
+        // ClientReceiveMessageEvents.GAME — they call ChatHud.addMessage()
+        // directly. The ChatHudMixin now intercepts ALL messages at the
+        // ChatHud level, so we no longer need this listener (it would
+        // double-emit server chat that goes through both paths).
+        // Kept as comment for reference:
+        //
+        // ClientReceiveMessageEvents.GAME.register((msg, overlay) -> {
+        //     String text = msg.getString();
+        //     ChatHandlers.record(text);
+        //     bus.emit("chat", Map.of("text", text, "overlay", overlay));
+        // });
+        //
+        // Overlay messages (action bar) still need to be captured separately
+        // since they don't go through ChatHud.addMessage:
         ClientReceiveMessageEvents.GAME.register((msg, overlay) -> {
-            String text = msg.getString();
-            ChatHandlers.record(text);
-            Map<String, Object> p = new HashMap<>();
-            p.put("text", text);
-            p.put("overlay", overlay);
-            bus.emit("chat", p);
+            if (overlay) {
+                String text = msg.getString();
+                Map<String, Object> p = new HashMap<>();
+                p.put("text", text);
+                p.put("overlay", true);
+                bus.emit("chat", p);
+            }
+            // Non-overlay messages are handled by ChatHudMixin
         });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             bus.emit("joined");

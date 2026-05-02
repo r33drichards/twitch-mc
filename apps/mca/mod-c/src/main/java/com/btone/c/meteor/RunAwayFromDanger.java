@@ -89,9 +89,46 @@ public class RunAwayFromDanger extends Module {
         .defaultValue(true)
         .build());
 
+    private final Setting<Boolean> resumeAfterFlee = sgGeneral.add(new BoolSetting.Builder()
+        .name("resume-after-flee")
+        .description("After the flee cooldown expires and the area is safe, resume the original Baritone goal.")
+        .defaultValue(true)
+        .build());
+
+    private final Setting<Boolean> useSafeZone = sgGeneral.add(new BoolSetting.Builder()
+        .name("use-safe-zone")
+        .description("Flee toward a configured safe zone instead of away from threat.")
+        .defaultValue(false)
+        .build());
+
+    private final Setting<Integer> safeZoneX = sgGeneral.add(new IntSetting.Builder()
+        .name("safe-zone-x")
+        .description("X coordinate of safe zone (e.g., camp).")
+        .defaultValue(0)
+        .range(-30000000, 30000000)
+        .sliderRange(-1000, 1000)
+        .build());
+
+    private final Setting<Integer> safeZoneY = sgGeneral.add(new IntSetting.Builder()
+        .name("safe-zone-y")
+        .description("Y coordinate of safe zone.")
+        .defaultValue(64)
+        .range(-64, 320)
+        .sliderRange(0, 128)
+        .build());
+
+    private final Setting<Integer> safeZoneZ = sgGeneral.add(new IntSetting.Builder()
+        .name("safe-zone-z")
+        .description("Z coordinate of safe zone.")
+        .defaultValue(0)
+        .range(-30000000, 30000000)
+        .sliderRange(-1000, 1000)
+        .build());
+
     private float lastHp = 20f;
     private long cooldownUntilMs = 0L;
     private boolean tickRegistered = false;
+    private boolean pendingResume = false;
 
     public RunAwayFromDanger() {
         super(Categories.Combat, "run-away-from-danger",
@@ -103,6 +140,8 @@ public class RunAwayFromDanger extends Module {
         PlayerEntity p = MinecraftClient.getInstance().player;
         lastHp = p != null ? p.getHealth() : 20f;
         cooldownUntilMs = 0L;
+        pendingResume = false;
+        BaritoneFlee.clearSavedGoal();
         ensureTickRegistered();
     }
 
@@ -135,6 +174,18 @@ public class RunAwayFromDanger extends Module {
             return;
         }
 
+        // Cooldown just expired — try to resume the original path if safe
+        if (pendingResume && resumeAfterFlee.get()) {
+            pendingResume = false;
+            try {
+                if (BaritoneFlee.resumeSavedGoal()) {
+                    info("[run-away] safe — resuming original path");
+                }
+            } catch (Throwable t) {
+                warning("Failed to resume path: %s", t.getClass().getSimpleName());
+            }
+        }
+
         float currentHp = player.getHealth();
         boolean hpDropped = enableHpTrigger.get() && (lastHp - currentHp) >= hpDropThreshold.get();
         Vec3d threatPos = null;
@@ -161,26 +212,36 @@ public class RunAwayFromDanger extends Module {
         cooldownUntilMs = now + cooldownSeconds.get() * 1000L;
 
         // Compute flee direction
-        Vec3d runDir;
-        if (threatPos != null) {
-            runDir = player.getPos().subtract(threatPos);
-            if (runDir.lengthSquared() < 1e-6) {
-                // Threat is exactly on the player (shouldn't happen, but guard)
-                runDir = Vec3d.fromPolar(0, player.getYaw() + 180);
-            } else {
-                runDir = runDir.normalize();
-            }
+        int gx, gy, gz;
+        if (useSafeZone.get()) {
+            // Flee toward configured safe zone
+            gx = safeZoneX.get();
+            gy = safeZoneY.get();
+            gz = safeZoneZ.get();
         } else {
-            // HP-drop only — flee in the reverse of the bot's facing
-            runDir = Vec3d.fromPolar(0, player.getYaw() + 180);
+            // Original behavior: flee away from threat
+            Vec3d runDir;
+            if (threatPos != null) {
+                runDir = player.getPos().subtract(threatPos);
+                if (runDir.lengthSquared() < 1e-6) {
+                    // Threat is exactly on the player (shouldn't happen, but guard)
+                    runDir = Vec3d.fromPolar(0, player.getYaw() + 180);
+                } else {
+                    runDir = runDir.normalize();
+                }
+            } else {
+                // HP-drop only — flee in the reverse of the bot's facing
+                runDir = Vec3d.fromPolar(0, player.getYaw() + 180);
+            }
+            Vec3d target = player.getPos().add(runDir.multiply(runDistance.get()));
+            gx = (int) Math.round(target.x);
+            gy = (int) Math.round(player.getY());
+            gz = (int) Math.round(target.z);
         }
-        Vec3d target = player.getPos().add(runDir.multiply(runDistance.get()));
-        int gx = (int) Math.round(target.x);
-        int gy = (int) Math.round(player.getY());
-        int gz = (int) Math.round(target.z);
 
         try {
             BaritoneFlee.fleeTo(gx, gy, gz);
+            pendingResume = true;
         } catch (Throwable t) {
             warning("Baritone flee failed: %s", t.getClass().getSimpleName());
             return;
@@ -192,5 +253,15 @@ public class RunAwayFromDanger extends Module {
         info("Fleeing %d blocks to (%d, %d, %d) — threat=%s hp=%.1f",
             runDistance.get(), gx, gy, gz,
             threatPos != null ? "mob" : "hp-drop", currentHp);
+
+        // Notify agent
+        try {
+            String notifyMessage = String.format("Danger detected! Fleeing from %s (HP: %.1f/20)",
+                threatPos != null ? "hostile mob" : "HP drop", currentHp);
+            AgentNotifier.notify(notifyMessage, "high");
+        } catch (Throwable t) {
+            // Notification is optional - don't break the flee logic
+            warning("AgentNotifier failed: %s: %s", t.getClass().getSimpleName(), t.getMessage());
+        }
     }
 }

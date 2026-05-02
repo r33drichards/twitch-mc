@@ -6,6 +6,7 @@
   "description": "Minecraft HTTP RPC surface driven by external MCP hosts.",
   "environment": "client",
   "entrypoints": { "client": ["com.btone.c.BtoneC"] },
+  "mixins": ["btone-mod-c.mixins.json"],
   "depends": {
     "fabricloader": ">=0.16.0",
     "minecraft": "~1.21.8",

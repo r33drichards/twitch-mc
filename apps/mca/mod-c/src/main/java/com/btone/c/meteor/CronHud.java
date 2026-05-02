@@ -43,10 +43,10 @@ public class CronHud extends HudElement {
     private static final Color DIM_COLOR      = new Color(160, 160, 160);  // Gray
     private static final Color BG_COLOR       = new Color(0, 0, 0, 200);   // Near-black
 
-    private static final double LINE_HEIGHT = 18;
-    private static final double PADDING = 10;
+    private static final double LINE_HEIGHT = 36;
+    private static final double PADDING = 20;
     private static final double WIDTH = 400;
-    private static final double TEXT_SCALE = 1.5;
+    private static final double TEXT_SCALE = 1.0;
 
     private JsonNode cachedCrons = null;
     private long lastReadTime = 0;

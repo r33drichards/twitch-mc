@@ -103,6 +103,13 @@ public class Surface extends Module {
                 }
                 info("[surface] triggered: rising — air=%d/%d pos=(%d,%d,%d)",
                     air, maxAir, p.getBlockX(), p.getBlockY(), p.getBlockZ());
+
+                // Notify agent
+                try {
+                    String notifyMessage = String.format("Surfacing - low air! (%d/%d) at Y=%.0f",
+                        air, maxAir, p.getY());
+                    AgentNotifier.notify(notifyMessage, "high");
+                } catch (Throwable ignored) {}
             }
             return;
         }
@@ -115,6 +122,14 @@ public class Surface extends Module {
             rising = false;
             info("[surface] released — air=%d/%d y=%.1f surfaced=%s",
                 air, maxAir, p.getY(), surfaced);
+
+            // Notify agent of successful surface
+            try {
+                String notifyMessage = String.format("Surfaced successfully at Y=%.0f (air: %d/%d)",
+                    p.getY(), air, maxAir);
+                AgentNotifier.notify(notifyMessage, "normal");
+            } catch (Throwable ignored) {}
+
             return;
         }
         // Re-assert the jump key in case something else released it.

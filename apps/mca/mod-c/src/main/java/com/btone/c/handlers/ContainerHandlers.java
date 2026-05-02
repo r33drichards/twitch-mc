@@ -68,14 +68,29 @@ public final class ContainerHandlers {
             n.put("screen", hs.getClass().getSimpleName());
             var handler = hs.getScreenHandler();
             n.put("syncId", handler.syncId);
-            var arr = n.putArray("slots");
+
+            // Determine split point between container and player inventory
+            // For most containers, first 27/54 slots are container, rest are player inventory
+            int playerInvStart = handler.slots.size() - 36; // Last 36 slots are usually player inv
+
+            var containerSlots = n.putArray("containerSlots");
+            var playerSlots = n.putArray("playerSlots");
+
             for (int i = 0; i < handler.slots.size(); i++) {
                 ItemStack s = handler.slots.get(i).getStack();
                 if (s.isEmpty()) continue;
-                ObjectNode o = arr.addObject();
+
+                ObjectNode o = M.createObjectNode();
                 o.put("slot", i);
                 o.put("id", Registries.ITEM.getId(s.getItem()).toString());
                 o.put("count", s.getCount());
+
+                // Add to appropriate array
+                if (i < playerInvStart) {
+                    containerSlots.add(o);
+                } else {
+                    playerSlots.add(o);
+                }
             }
             return n;
         }));
@@ -106,6 +121,78 @@ public final class ContainerHandlers {
             ObjectNode n = M.createObjectNode();
             n.put("closed", true);
             return n;
+        }));
+        r.register("container.craft", params -> ClientThread.call(5_000, () -> {
+            String itemId = params.get("item").asText();
+            int count = params.path("count").asInt(1);
+            int tableX = params.path("tableX").asInt();
+            int tableY = params.path("tableY").asInt();
+            int tableZ = params.path("tableZ").asInt();
+            var mc = MinecraftClient.getInstance();
+            var p = mc.player;
+            if (p == null || mc.interactionManager == null) {
+                throw new IllegalStateException("no_player");
+            }
+            try {
+                // Open crafting table if coordinates provided
+                if (tableX != 0 || tableY != 0 || tableZ != 0) {
+                    BlockPos pos = new BlockPos(tableX, tableY, tableZ);
+                    BlockHitResult hit = new BlockHitResult(Vec3d.ofCenter(pos), Direction.UP, pos, false);
+                    mc.interactionManager.interactBlock(p, Hand.MAIN_HAND, hit);
+                    Thread.sleep(300);
+                }
+                if (!(mc.currentScreen instanceof HandledScreen<?> hs)) {
+                    throw new IllegalStateException("no_container");
+                }
+                var handler = hs.getScreenHandler();
+                // For crafting table: slot 0 = output, slots 1-9 = 3x3 grid
+                // Bread recipe: 3 wheat in a row (use slots 1,2,3)
+                // Main inventory starts at slot 10 for crafting table
+                int crafted = 0;
+                if (itemId.equals("minecraft:bread")) {
+                    for (int i = 0; i < count; i++) {
+                        // Find wheat anywhere in the container (search all slots)
+                        Integer wheatSlot = null;
+                        for (int slot = 0; slot < handler.slots.size(); slot++) {
+                            // Skip craft grid slots (0-9)
+                            if (slot >= 1 && slot <= 9) continue;
+                            ItemStack stack = handler.slots.get(slot).getStack();
+                            if (!stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).toString().equals("minecraft:wheat")) {
+                                if (stack.getCount() >= 3) {
+                                    wheatSlot = slot;
+                                    break;
+                                }
+                            }
+                        }
+                        if (wheatSlot == null) break;
+
+                        // Left-click wheat to pick up entire stack
+                        mc.interactionManager.clickSlot(handler.syncId, wheatSlot, 0, SlotActionType.PICKUP, p);
+                        Thread.sleep(50);
+                        // Right-click slots 1, 2, 3 to place 1 wheat each (top row)
+                        mc.interactionManager.clickSlot(handler.syncId, 1, 1, SlotActionType.PICKUP, p);
+                        Thread.sleep(50);
+                        mc.interactionManager.clickSlot(handler.syncId, 2, 1, SlotActionType.PICKUP, p);
+                        Thread.sleep(50);
+                        mc.interactionManager.clickSlot(handler.syncId, 3, 1, SlotActionType.PICKUP, p);
+                        Thread.sleep(50);
+                        // Left-click wheat slot again to put remaining wheat back
+                        mc.interactionManager.clickSlot(handler.syncId, wheatSlot, 0, SlotActionType.PICKUP, p);
+                        Thread.sleep(50);
+                        // Shift-click output slot to craft bread into inventory
+                        mc.interactionManager.clickSlot(handler.syncId, 0, 0, SlotActionType.QUICK_MOVE, p);
+                        Thread.sleep(100);
+                        crafted++;
+                    }
+                }
+                ObjectNode n = M.createObjectNode();
+                n.put("crafted", crafted);
+                n.put("item", itemId);
+                return n;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("interrupted", e);
+            }
         }));
     }
 }

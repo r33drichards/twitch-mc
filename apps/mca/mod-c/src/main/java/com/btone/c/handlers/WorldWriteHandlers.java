@@ -96,25 +96,60 @@ public final class WorldWriteHandlers {
     }
 
     private static RpcHandler mineBlock() {
-        // Single-tick start; survival mining requires multiple attackBlock calls.
-        // For an MVP this primitive is enough — the agent can poll/repeat.
-        return params -> ClientThread.call(TIMEOUT_MS, () -> {
+        // Fully break a single block. Calls attackBlock then repeatedly calls
+        // updateBlockBreakingProgress until the block is gone or a timeout.
+        return params -> {
             int x = params.get("x").asInt();
             int y = params.get("y").asInt();
             int z = params.get("z").asInt();
-            var mc = MinecraftClient.getInstance();
-            if (mc.interactionManager == null || mc.player == null) {
-                throw new IllegalStateException("no_player");
-            }
+            int timeoutTicks = params.path("timeout").asInt(200); // ~10s max
+
             BlockPos pos = new BlockPos(x, y, z);
-            Direction side = chooseSide(pos);
-            aimAt(Vec3d.ofCenter(pos));
-            boolean ok = mc.interactionManager.attackBlock(pos, side);
-            ObjectNode n = M.createObjectNode();
-            n.put("started", ok);
-            n.put("side", side.asString());
-            return n;
-        });
+
+            // Start the break on the client thread.
+            Direction[] sideHolder = new Direction[1];
+            ClientThread.call(TIMEOUT_MS, () -> {
+                var mc = MinecraftClient.getInstance();
+                if (mc.interactionManager == null || mc.player == null)
+                    throw new IllegalStateException("no_player");
+                sideHolder[0] = chooseSide(pos);
+                aimAt(Vec3d.ofCenter(pos));
+                mc.interactionManager.attackBlock(pos, sideHolder[0]);
+                return null;
+            });
+
+            // Now pump updateBlockBreakingProgress on the client thread each tick
+            // until the block is broken (turns to air) or we time out.
+            int ticks = 0;
+            while (ticks < timeoutTicks) {
+                try { Thread.sleep(50); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt(); break;
+                }
+                ticks++;
+                Boolean done = ClientThread.call(TIMEOUT_MS, () -> {
+                    var mc = MinecraftClient.getInstance();
+                    if (mc.interactionManager == null) return true;
+                    // Check if block is already broken
+                    if (mc.world != null && mc.world.getBlockState(pos).isAir()) return true;
+                    // Continue mining
+                    aimAt(Vec3d.ofCenter(pos));
+                    mc.interactionManager.updateBlockBreakingProgress(pos, sideHolder[0]);
+                    return false;
+                });
+                if (Boolean.TRUE.equals(done)) break;
+            }
+
+            // Check final state
+            final int finalTicks = ticks;
+            return ClientThread.call(TIMEOUT_MS, () -> {
+                var mc = MinecraftClient.getInstance();
+                boolean broken = mc.world != null && mc.world.getBlockState(pos).isAir();
+                ObjectNode n = M.createObjectNode();
+                n.put("broken", broken);
+                n.put("ticks", finalTicks);
+                return n;
+            });
+        };
     }
 
     private static RpcHandler placeBlock() {
