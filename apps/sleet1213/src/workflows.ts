@@ -182,24 +182,11 @@ const { fireScheduledPrompt } = proxyActivities<typeof scheduleActivities>({
   retry: { maximumAttempts: 2 },
 });
 
-const { fireScheduledRunJs } = proxyActivities<typeof scheduleActivities>({
-  // JS execution can take up to 2 min (mcp-v8 poll loop) plus the
-  // webhook POST at the end. Give it headroom.
-  startToCloseTimeout: '3 minutes',
-  retry: { maximumAttempts: 2 },
-});
-
 export async function scheduledPrompt(
   sessionId: string,
   userId: string,
   prompt: string,
-  type: 'prompt' | 'run_js' = 'prompt',
-  heap?: string,
 ): Promise<void> {
-  if (type === 'run_js') {
-    await fireScheduledRunJs({ sessionId, userId, code: prompt, heap });
-  } else {
-    const taggedPrompt = `[SCHEDULED] ${prompt}`;
-    await fireScheduledPrompt({ sessionId, userId, prompt: taggedPrompt });
-  }
+  const taggedPrompt = `[SCHEDULED] ${prompt}`;
+  await fireScheduledPrompt({ sessionId, userId, prompt: taggedPrompt });
 }

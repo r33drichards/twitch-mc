@@ -147,16 +147,21 @@ async function streamChat(cfg: Config, signal: AbortSignal): Promise<void> {
     : {};
   for await (const ev of readSse(url, headers, signal)) {
     if (ev.event !== 'chat') continue;
-    let payload: { text?: string; overlay?: boolean };
+    let parsed: Record<string, unknown>;
     try {
-      payload = JSON.parse(ev.data);
+      parsed = JSON.parse(ev.data);
     } catch {
       continue;
     }
-    const text = (payload.text ?? '').trim();
+    // The SSE data is the full EventBus.Event record:
+    //   {"type":"chat","ts":...,"payload":{"text":"...","overlay":false}}
+    // Extract the inner payload, falling back to top-level for compat.
+    const inner = (parsed.payload ?? parsed) as { text?: string; overlay?: boolean };
+    const text = (inner.text ?? '').trim();
     if (!text) continue;
-    if (cfg.skipOverlay && payload.overlay === true) continue;
+    if (cfg.skipOverlay && inner.overlay === true) continue;
     try {
+      console.log(`[mc-bridge] forwarding: ${text.slice(0, 120)}`);
       await postToWebhook(cfg, text);
     } catch (err) {
       console.error('[mc-bridge] webhook post failed:', (err as Error).message);

@@ -83,17 +83,14 @@ systemctl --user enable --now sleet1213-temporal sleet1213-webhook \
 
 ## Out of scope (intentionally manual)
 
-- **State directories**: `/var/lib/btone/`, `/home/ubuntu/sleet1213/.temporal-db`,
+- **State directories**: `/var/lib/btone/`,
   `~/.openclaw/{workspace,delivery-queue}`, `btone-mc-work/`. World saves,
   databases, queues — never in the repo.
 - **Secret env files**: `/etc/btone-bot.env`, `/etc/btone-stream/env`,
-  `/etc/litellm/config.yaml`, `/home/ubuntu/sleet1213/.env`. Plan: sops-nix
+  `/etc/litellm/config.yaml`, `apps/sleet1213/.env`. Plan: sops-nix
   follow-up.
 - **OpenClaw**: `openclaw.service`, `openclaw-gateway.service`,
   `litellm.service`, `event-bridge.service` are managed elsewhere.
-- **Source code paths**: services still reference
-  `/home/ubuntu/{sleet1213,mca-src}/...` — relocating into the repo
-  checkout is a separate phase to avoid stream-time downtime.
 
 ## Apps
 

@@ -1,6 +1,6 @@
 ---
 name: sleet1213-self-admin
-description: Use when you (sleet1213) need to admin this EC2 host — restart your own services, restart the bot or stream, edit your own code, triage audio/video, or check service health. Catalogs the systemd units (yours under user-systemd; the bot/stream/event-bridge under system-systemd with passwordless sudo) and the source-edit-and-restart workflow for your own repo at /home/ubuntu/sleet1213/.
+description: Use when you (sleet1213) need to admin this EC2 host — restart your own services, restart the bot or stream, edit your own code, triage audio/video, or check service health. Catalogs the systemd units (yours under user-systemd; the bot/stream/event-bridge under system-systemd with passwordless sudo) and the source-edit-and-restart workflow for your own repo at /home/ubuntu/twitch-mc/apps/sleet1213/.
 ---
 
 # Admin of this host
@@ -81,11 +81,11 @@ sudo journalctl -u btone-stream -n 30 --no-pager | grep -iE 'alsa|audio|sample_f
 ## Editing your own code
 
 Your repo is [r33drichards/sleet1213](https://github.com/r33drichards/sleet1213)
-checked out at `/home/ubuntu/sleet1213/`. Source-edit + restart, no
+checked out at `/home/ubuntu/twitch-mc/apps/sleet1213/`. Source-edit + restart, no
 build step (we run through `ts-node/esm` directly):
 
 ```bash
-cd /home/ubuntu/sleet1213
+cd /home/ubuntu/twitch-mc/apps/sleet1213
 # edit src/<file>.ts ...
 git add -p && git commit -m "..." && git push origin master
 systemctl --user restart sleet1213-worker   # or webhook / irc as appropriate
@@ -125,7 +125,7 @@ back to GitHub so it survives a re-clone.
 
 ## .env
 
-`/home/ubuntu/sleet1213/.env` (mode 0600). Key entries:
+`/home/ubuntu/twitch-mc/apps/sleet1213/.env` (mode 0600). Key entries:
 
 - `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION=us-west-2`,
   `ANTHROPIC_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0` — auth
@@ -136,8 +136,8 @@ back to GitHub so it survives a re-clone.
   operator can trigger your turns; ambient viewers can't.
 - `CLAUDE_CODE_PATH` — path to the glibc claude binary
   (`node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude`).
-- `CLAUDE_CWD` — your working dir (`/home/ubuntu/sleet1213`).
-- `SLEET1213_PLUGIN_DIR` — defaults to `/home/ubuntu/sleet1213/ted-plugin`.
+- `CLAUDE_CWD` — your working dir (`/home/ubuntu/twitch-mc/apps/sleet1213`).
+- `SLEET1213_PLUGIN_DIR` — defaults to `/home/ubuntu/twitch-mc/apps/sleet1213/ted-plugin`.
 
 After editing `.env`: `systemctl --user restart sleet1213-worker
 sleet1213-webhook sleet1213-irc`.

@@ -162,7 +162,7 @@ export async function streamClaude(req: StreamReq): Promise<{ text: string; sdkS
   const options: Options = {
     model: agentCfg.model ?? MODEL,
     abortController: abort,
-    cwd: process.env.CLAUDE_CWD ?? '/home/ubuntu/sleet1213',
+    cwd: process.env.CLAUDE_CWD ?? '/home/ubuntu/twitch-mc/apps/sleet1213',
     additionalDirectories,
     ...(process.env.CLAUDE_CODE_PATH ? { pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH } : {}),
     systemPrompt: systemParts.join('\n\n'),

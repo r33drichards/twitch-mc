@@ -5,8 +5,8 @@ Requires=sleet1213-webhook.service
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ubuntu/sleet1213
-EnvironmentFile=/home/ubuntu/sleet1213/.env
+WorkingDirectory=/home/ubuntu/twitch-mc/apps/sleet1213
+EnvironmentFile=/home/ubuntu/twitch-mc/apps/sleet1213/.env
 ExecStart=/usr/bin/node --loader ts-node/esm src/mc-bridge.ts
 Restart=always
 RestartSec=5

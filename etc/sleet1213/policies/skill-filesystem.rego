@@ -6,7 +6,7 @@ default allow = false
 local_prefix := "/home/ubuntu/.local/share/sleet1213/plugin/skills/"
 
 # REPO skills dir — read-only access
-repo_prefix := "/home/ubuntu/sleet1213/ted-plugin/skills/"
+repo_prefix := "/home/ubuntu/twitch-mc/apps/sleet1213/ted-plugin/skills/"
 
 # coords.md — read/write access (shared coordinate reference)
 coords_path := "/home/ubuntu/mca-src/coords.md"

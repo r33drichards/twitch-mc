@@ -4,7 +4,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/home/ubuntu/.temporalio/bin/temporal server start-dev --ip 127.0.0.1 --port 7233 --ui-port 8233 --db-filename /home/ubuntu/sleet1213/.temporal-db
+ExecStart=/home/ubuntu/.temporalio/bin/temporal server start-dev --ip 127.0.0.1 --port 7233 --ui-port 8233 --db-filename /home/ubuntu/twitch-mc/apps/sleet1213/.temporal-db
 Restart=always
 RestartSec=5
 StandardOutput=journal

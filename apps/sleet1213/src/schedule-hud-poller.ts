@@ -28,8 +28,6 @@ interface CronEntry {
   id: string;
   cron: string;
   prompt: string;
-  type: 'prompt' | 'run_js';
-  heap?: string;
   recurring: boolean;
   durable: boolean;
   state: string;
@@ -103,17 +101,9 @@ async function poll(client: ScheduleClient): Promise<void> {
 
       // Extract prompt from action args
       let prompt = '';
-      let schedType: 'prompt' | 'run_js' = 'prompt';
-      let heap: string | undefined;
       const action = desc.action as any;
       if (action?.args?.length >= 3) {
         prompt = String(action.args[2] ?? '').slice(0, 60);
-        if (action.args.length >= 4 && action.args[3] === 'run_js') {
-          schedType = 'run_js';
-        }
-        if (action.args.length >= 5 && action.args[4]) {
-          heap = String(action.args[4]);
-        }
       } else if (action?.workflowType) {
         prompt = String(action.workflowType);
       }
@@ -127,8 +117,6 @@ async function poll(client: ScheduleClient): Promise<void> {
         id,
         cron: cronExpr,
         prompt,
-        type: schedType,
-        heap,
         recurring,
         durable: true,
         state: paused ? 'paused' : 'scheduled',

@@ -59,7 +59,7 @@ export function makeApp(deps: {
       taskQueue: deps.taskQueue,
       args: [body.sessionId, [], userId, /* seedSdkSessionId */ ''],
       signal: userMessageSignal,
-      signalArgs: [body.msg, agentConfig],
+      signalArgs: [body.msg, agentConfig, userId],
     });
 
     return c.json({ ok: true });

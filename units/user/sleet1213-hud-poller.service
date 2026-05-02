@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/ubuntu/sleet1213
-EnvironmentFile=/home/ubuntu/sleet1213/.env
+WorkingDirectory=/home/ubuntu/twitch-mc/apps/sleet1213
+EnvironmentFile=/home/ubuntu/twitch-mc/apps/sleet1213/.env
 ExecStart=/usr/bin/node --loader ts-node/esm src/schedule-hud-poller.ts
 Restart=on-failure
 RestartSec=5

@@ -1,8 +1,7 @@
 /**
- * In-process MCP server exposing memory CRUD, MCP server management,
- * and Temporal schedule management.
+ * In-process MCP server exposing memory CRUD and MCP server management.
  * Passed to the Agent SDK via `mcpServers` so the agent can manage
- * memories, tool servers, and crons without custom built-in tools.
+ * memories and its own tool servers without custom built-in tools.
  */
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod/v4';
@@ -20,16 +19,19 @@ import {
   McpNameTakenError,
   type MemoryTier,
 } from './db.js';
-import type { scheduledPrompt } from './workflows.js';
 
-const tierEnum = z.enum(['working', 'short_term', 'long_term']);
-
-const PLUGIN_MCP_JSON = '/app/ted-plugin/.mcp.json';
 const TEMPORAL_ADDRESS = process.env.TEMPORAL_ADDRESS ?? '127.0.0.1:7233';
 const TEMPORAL_NAMESPACE = process.env.TEMPORAL_NAMESPACE ?? 'default';
 const TASK_QUEUE = process.env.TASK_QUEUE ?? 'chat';
+/** All scheduled prompts fire into this session — hardcoded to prevent
+ *  agents from accidentally targeting a session the IRC bridge doesn't
+ *  subscribe to. */
+const SCHEDULE_SESSION = 'irc-sleet1213';
 
-// Lazy singleton — created on first schedule tool call.
+/**
+ * Lazily-created Temporal ScheduleClient singleton. The connection is
+ * established on first use and reused across subsequent calls.
+ */
 let _scheduleClient: ScheduleClient | null = null;
 async function getScheduleClient(): Promise<ScheduleClient> {
   if (!_scheduleClient) {
@@ -38,6 +40,10 @@ async function getScheduleClient(): Promise<ScheduleClient> {
   }
   return _scheduleClient;
 }
+
+const tierEnum = z.enum(['working', 'short_term', 'long_term']);
+
+const PLUGIN_MCP_JSON = '/app/ted-plugin/.mcp.json';
 
 /**
  * Sync the DB mcp_servers to the plugin's .mcp.json so the SDK
@@ -62,275 +68,278 @@ async function syncMcpJson(userId: string): Promise<Record<string, any>> {
   return config;
 }
 
-export interface TedMcpOptions {
-  /** Include mcp_add/mcp_list/mcp_remove tools (admin only). */
+export interface TedMcpServerOptions {
+  /** Include mcp_add/mcp_list/mcp_remove tools. Default: true (admin). */
   includeMcpManagement?: boolean;
 }
 
-export function createTedMcpServer(userId: string, opts: TedMcpOptions = {}) {
-  const { includeMcpManagement = false } = opts;
+export function createTedMcpServer(userId: string, opts?: TedMcpServerOptions) {
+  const includeMcpMgmt = opts?.includeMcpManagement ?? true;
 
-  // ---- MCP server management tools (admin only) ----
-  const mcpTools = includeMcpManagement ? [
+  // ---- Memory tools (always included) ----
+  const allTools: any[] = [
     tool(
-      'mcp_add',
-      'Add an MCP tool server. For HTTP servers provide url. For stdio servers (local commands) provide command and args. The server becomes available on the next turn.',
-      {
-        name: z.string().describe('Short identifier (e.g. "github", "runno")'),
-        url: z.string().optional().describe('HTTP(S) URL for HTTP transport'),
-        command: z.string().optional().describe('Command for stdio transport (e.g. "npx")'),
-        args: z.array(z.string()).optional().describe('Args for stdio transport (e.g. ["@runno/mcp"])'),
+      'memory_set',
+      'Create or update a memory. working = always in context, short_term = index in context, long_term = searchable.',
+      { tier: tierEnum, key: z.string(), content: z.string() },
+      async (args) => {
+        await setMemory(userId, args.tier as MemoryTier, args.key, args.content);
+        return { content: [{ type: 'text', text: `Memory "${args.key}" saved to ${args.tier}.` }] };
       },
-      async (input) => {
-        if (!input.url && !input.command) {
-          return { content: [{ type: 'text', text: 'Provide either url (HTTP) or command (stdio).' }] };
-        }
-        const transport = input.command ? 'stdio' : 'http';
-        try {
-          await createMcpServer(userId, {
-            name: input.name,
-            url: input.url,
-            transport: transport as any,
-            command: input.command,
-            args: input.args,
-          });
-        } catch (err) {
-          if (err instanceof McpNameTakenError) {
-            return { content: [{ type: 'text', text: `Server "${input.name}" already exists.` }] };
-          }
-          throw err;
-        }
-        const config = await syncMcpJson(userId);
-        const label = input.command ? `${input.command} ${(input.args ?? []).join(' ')}` : input.url!;
+    ),
+    tool(
+      'memory_get',
+      'Read the full content of a memory by key.',
+      { key: z.string() },
+      async (args) => {
+        const mem = await getMemory(userId, args.key);
+        if (!mem) return { content: [{ type: 'text', text: `No memory found with key "${args.key}".` }] };
+        return { content: [{ type: 'text', text: `[${mem.tier}] ${mem.key}:\n${mem.content}` }] };
+      },
+    ),
+    tool(
+      'memory_delete',
+      'Delete a memory by key.',
+      { key: z.string() },
+      async (args) => {
+        const ok = await deleteMemory(userId, args.key);
         return {
-          content: [{
-            type: 'text',
-            text: `Added MCP server "${input.name}" (${transport}: ${label}). ` +
-                  `It will be available on the next turn. ` +
-                  `Plugin .mcp.json updated with ${Object.keys(config).length} server(s).`,
-          }],
+          content: [{ type: 'text', text: ok ? `Deleted "${args.key}".` : `No memory "${args.key}".` }],
         };
       },
     ),
     tool(
-      'mcp_list',
-      'List all configured MCP tool servers.',
-      {},
-      async () => {
-        const servers = await listMcpServers(userId);
-        if (servers.length === 0) return { content: [{ type: 'text', text: 'No MCP servers configured.' }] };
-        const lines = servers.map((s) => {
-          const label = s.transport === 'stdio' && s.command
-            ? `${s.command} ${(s.args ?? []).join(' ')}`
-            : s.url ?? 'unknown';
-          return `${s.name} — ${s.transport}: ${label} (${s.enabled ? 'enabled' : 'disabled'})`;
+      'memory_list',
+      'List all memories, optionally filtered by tier.',
+      { tier: tierEnum.optional() },
+      async (args) => {
+        const mems = await listMemories(userId, args.tier as MemoryTier | undefined);
+        if (mems.length === 0) return { content: [{ type: 'text', text: 'No memories found.' }] };
+        const lines = mems.map((m) => {
+          const preview = m.content.length > 80 ? m.content.slice(0, 80) + '...' : m.content;
+          return `[${m.tier}] ${m.key}: ${preview}`;
         });
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       },
     ),
     tool(
-      'mcp_remove',
-      'Remove an MCP tool server by name.',
-      { name: z.string() },
-      async (input) => {
-        const servers = await listMcpServers(userId);
-        const target = servers.find((s) => s.name === input.name);
-        if (!target) return { content: [{ type: 'text', text: `No server named "${input.name}".` }] };
-        await deleteMcpServer(target.id, userId);
-        await syncMcpJson(userId);
-        return { content: [{ type: 'text', text: `Removed "${input.name}".` }] };
+      'memory_search',
+      'Search memories by keyword across keys and content.',
+      { query: z.string(), tier: tierEnum.optional() },
+      async (args) => {
+        const results = await searchMemories(userId, args.query, args.tier as MemoryTier | undefined);
+        if (results.length === 0) return { content: [{ type: 'text', text: `No memories matching "${args.query}".` }] };
+        const lines = results.map((m) => {
+          const preview = m.content.length > 80 ? m.content.slice(0, 80) + '...' : m.content;
+          return `[${m.tier}] ${m.key}: ${preview}`;
+        });
+        return { content: [{ type: 'text', text: lines.join('\n') }] };
       },
     ),
-  ] : [];
+  ];
 
-  // ---- Schedule (cron) management tools ----
-  const scheduleTools = [
+  // ---- MCP server management tools (admin only) ----
+  if (includeMcpMgmt) {
+    allTools.push(
+      tool(
+        'mcp_add',
+        'Add an MCP tool server. For HTTP servers provide url. For stdio servers (local commands) provide command and args. The server becomes available on the next turn.',
+        {
+          name: z.string().describe('Short identifier (e.g. "github", "runno")'),
+          url: z.string().optional().describe('HTTP(S) URL for HTTP transport'),
+          command: z.string().optional().describe('Command for stdio transport (e.g. "npx")'),
+          args: z.array(z.string()).optional().describe('Args for stdio transport (e.g. ["@runno/mcp"])'),
+        },
+        async (input) => {
+          if (!input.url && !input.command) {
+            return { content: [{ type: 'text', text: 'Provide either url (HTTP) or command (stdio).' }] };
+          }
+          const transport = input.command ? 'stdio' : 'http';
+          try {
+            await createMcpServer(userId, {
+              name: input.name,
+              url: input.url,
+              transport: transport as any,
+              command: input.command,
+              args: input.args,
+            });
+          } catch (err) {
+            if (err instanceof McpNameTakenError) {
+              return { content: [{ type: 'text', text: `Server "${input.name}" already exists.` }] };
+            }
+            throw err;
+          }
+          const config = await syncMcpJson(userId);
+          const label = input.command ? `${input.command} ${(input.args ?? []).join(' ')}` : input.url!;
+          return {
+            content: [{
+              type: 'text',
+              text: `Added MCP server "${input.name}" (${transport}: ${label}). ` +
+                    `It will be available on the next turn. ` +
+                    `Plugin .mcp.json updated with ${Object.keys(config).length} server(s).`,
+            }],
+          };
+        },
+      ),
+      tool(
+        'mcp_list',
+        'List all configured MCP tool servers.',
+        {},
+        async () => {
+          const servers = await listMcpServers(userId);
+          if (servers.length === 0) return { content: [{ type: 'text', text: 'No MCP servers configured.' }] };
+          const lines = servers.map((s) => {
+            const label = s.transport === 'stdio' && s.command
+              ? `${s.command} ${(s.args ?? []).join(' ')}`
+              : s.url ?? 'unknown';
+            return `${s.name} — ${s.transport}: ${label} (${s.enabled ? 'enabled' : 'disabled'})`;
+          });
+          return { content: [{ type: 'text', text: lines.join('\n') }] };
+        },
+      ),
+      tool(
+        'mcp_remove',
+        'Remove an MCP tool server by name.',
+        { name: z.string() },
+        async (input) => {
+          const servers = await listMcpServers(userId);
+          const target = servers.find((s) => s.name === input.name);
+          if (!target) return { content: [{ type: 'text', text: `No server named "${input.name}".` }] };
+          await deleteMcpServer(target.id, userId);
+          await syncMcpJson(userId);
+          return { content: [{ type: 'text', text: `Removed "${input.name}".` }] };
+        },
+      ),
+    );
+  }
+
+  // ---- Schedule management tools (always included) ----
+  // These let users (including the public agent) create, list, delete,
+  // and trigger Temporal schedules. Scheduled prompts always execute
+  // with the public (least-privilege) agent config — see
+  // schedule-activities.ts.
+  allTools.push(
     tool(
       'schedule_create',
-      'Create a recurring or one-shot Temporal schedule.\n\n' +
-      'type "prompt" (default): sends a text prompt to the agent session, triggering a full LLM turn.\n' +
-      'type "run_js": executes JavaScript directly via the mcp-v8 sidecar — zero LLM cost, deterministic.\n\n' +
-      'run_js schedules get a persistent V8 heap named after the schedule ID (or a custom heap name). ' +
-      'Variables, counters, and state set with globalThis persist across every fire of that schedule. ' +
-      'Example: `globalThis.runCount = (globalThis.runCount || 0) + 1;` increments each fire.\n\n' +
-      'The code runs at top level — use console.log() for output, top-level await is supported. ' +
-      'The btone sub-server is available via `await mcp.callTool("btone", "method", {params})`. ' +
-      'The fs module is available for reading/writing files (sandboxed by policy).\n\n' +
-      'Results are posted into the agent session so they appear in chat.',
+      'Create a recurring or one-shot scheduled prompt. Use --cron for recurring (standard cron expression) or --at for a one-time fire (ISO 8601 timestamp). The scheduled prompt always runs with public (restricted) permissions.',
       {
-        id: z.string().describe('Unique schedule ID (e.g. "farm-loop", "check-health")'),
-        session_id: z.string().describe('Session ID to post results to (e.g. "irc-sleet1213")'),
-        cron: z.string().optional().describe('Cron expression for recurring schedules (e.g. "*/30 * * * *" for every 30 min)'),
-        at: z.string().optional().describe('ISO timestamp for one-shot schedules (e.g. "2026-05-02T15:00:00Z")'),
-        prompt: z.string().describe('For type=prompt: the text prompt. For type=run_js: the JavaScript code.'),
-        type: z.enum(['prompt', 'run_js']).default('prompt').describe('prompt = send to agent (LLM turn), run_js = execute JS directly via mcp-v8'),
-        heap: z.string().optional().describe('Custom heap name for run_js schedules (defaults to the schedule ID). Variables stored on globalThis persist across fires within the same heap.'),
+        id: z.string().describe('Unique schedule identifier (e.g. "my-farm-loop")'),
+        cron: z.string().optional().describe('Cron expression for recurring schedule (e.g. "*/90 * * * *")'),
+        at: z.string().optional().describe('ISO 8601 timestamp for one-shot schedule (e.g. "2026-04-28T15:00:00Z")'),
+        prompt: z.string().describe('The prompt text that will be sent when the schedule fires'),
       },
-      async (args) => {
-        if (!args.cron && !args.at) {
-          return { content: [{ type: 'text', text: 'Provide either cron (recurring) or at (one-shot ISO timestamp).' }] };
+      async (input) => {
+        if (!input.cron && !input.at) {
+          return { content: [{ type: 'text', text: 'Must provide either cron (recurring) or at (one-shot).' }] };
         }
-        // Default heap to the schedule ID for run_js schedules
-        const heap = args.type === 'run_js' ? (args.heap ?? args.id) : undefined;
         try {
           const client = await getScheduleClient();
-
           const spec: any = {};
-          if (args.cron) {
-            spec.cronExpressions = [args.cron];
-          } else if (args.at) {
-            const d = new Date(args.at);
+          if (input.cron) {
+            spec.cronExpressions = [input.cron];
+          } else if (input.at) {
+            const d = new Date(input.at);
+            if (isNaN(d.getTime())) {
+              return { content: [{ type: 'text', text: `Invalid timestamp: "${input.at}"` }] };
+            }
             const cronOnce = `${d.getUTCMinutes()} ${d.getUTCHours()} ${d.getUTCDate()} ${d.getUTCMonth() + 1} * ${d.getUTCFullYear()}`;
             spec.cronExpressions = [cronOnce];
           }
-
           const handle = await client.create({
-            scheduleId: args.id,
+            scheduleId: input.id,
             spec,
             action: {
               type: 'startWorkflow' as const,
               workflowType: 'scheduledPrompt',
               taskQueue: TASK_QUEUE,
-              args: [args.session_id, userId, args.prompt, args.type, heap] as Parameters<typeof scheduledPrompt>,
+              args: [SCHEDULE_SESSION, userId, input.prompt],
             },
             policies: {
               overlap: ScheduleOverlapPolicy.SKIP,
             },
-            state: args.at ? { remainingActions: 1 } : undefined,
+            state: input.at ? { remainingActions: 1 } : undefined,
           });
-
-          const kind = args.cron ? `recurring (${args.cron})` : `one-shot (${args.at})`;
-          const typeLabel = args.type === 'run_js' ? ` [run_js, heap="${heap}"]` : '';
-          return { content: [{ type: 'text', text: `Created schedule "${handle.scheduleId}" — ${kind}${typeLabel}` }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text', text: `Failed to create schedule: ${err.message}` }] };
+          const kind = input.cron ? `recurring (${input.cron})` : `one-shot (${input.at})`;
+          return {
+            content: [{
+              type: 'text',
+              text: `Created schedule "${handle.scheduleId}" — ${kind}\n` +
+                    `  session: ${SCHEDULE_SESSION}, user: ${userId}\n` +
+                    `  prompt: ${input.prompt}`,
+            }],
+          };
+        } catch (err) {
+          return { content: [{ type: 'text', text: `Failed to create schedule: ${(err as Error).message}` }] };
         }
       },
     ),
     tool(
       'schedule_list',
-      'List all Temporal schedules (crons).',
+      'List all Temporal schedules with their status and next fire times.',
       {},
       async () => {
         try {
           const client = await getScheduleClient();
-          const entries: string[] = [];
+          const lines: string[] = [];
           for await (const schedule of client.list()) {
             const paused = schedule.state.paused ? ' [PAUSED]' : '';
             const nextTimes = schedule.info.nextActionTimes
-              .slice(0, 2)
-              .map((d) => d.toISOString())
+              .slice(0, 3)
+              .map((d: Date) => d.toISOString())
               .join(', ');
             let line = `${schedule.scheduleId}${paused}`;
-            if (nextTimes) line += ` — next: ${nextTimes}`;
-            entries.push(line);
+            if (nextTimes) line += `\n  next: ${nextTimes}`;
+            const recentActions = schedule.info.recentActions ?? [];
+            if (recentActions.length > 0) {
+              const last = recentActions[recentActions.length - 1];
+              line += `\n  last: ${(last as any).scheduledAt?.toISOString() ?? 'unknown'}`;
+            }
+            lines.push(line);
           }
-          if (entries.length === 0) return { content: [{ type: 'text', text: 'No schedules found.' }] };
-          return { content: [{ type: 'text', text: entries.join('\n') }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text', text: `Failed to list schedules: ${err.message}` }] };
+          if (lines.length === 0) {
+            return { content: [{ type: 'text', text: 'No schedules found.' }] };
+          }
+          return { content: [{ type: 'text', text: lines.join('\n\n') }] };
+        } catch (err) {
+          return { content: [{ type: 'text', text: `Failed to list schedules: ${(err as Error).message}` }] };
         }
       },
     ),
     tool(
       'schedule_delete',
       'Delete a Temporal schedule by ID.',
-      { id: z.string().describe('Schedule ID to delete') },
-      async (args) => {
+      { id: z.string().describe('The schedule ID to delete') },
+      async (input) => {
         try {
           const client = await getScheduleClient();
-          const handle = client.getHandle(args.id);
+          const handle = client.getHandle(input.id);
           await handle.delete();
-          return { content: [{ type: 'text', text: `Deleted schedule "${args.id}".` }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text', text: `Failed to delete schedule: ${err.message}` }] };
+          return { content: [{ type: 'text', text: `Deleted schedule "${input.id}".` }] };
+        } catch (err) {
+          return { content: [{ type: 'text', text: `Failed to delete schedule: ${(err as Error).message}` }] };
         }
       },
     ),
     tool(
       'schedule_trigger',
-      'Manually fire a Temporal schedule immediately (one-off trigger, does not affect the regular cadence).',
-      { id: z.string().describe('Schedule ID to trigger') },
-      async (args) => {
+      'Manually trigger a Temporal schedule to fire immediately.',
+      { id: z.string().describe('The schedule ID to trigger') },
+      async (input) => {
         try {
           const client = await getScheduleClient();
-          const handle = client.getHandle(args.id);
+          const handle = client.getHandle(input.id);
           await handle.trigger();
-          return { content: [{ type: 'text', text: `Triggered schedule "${args.id}" (fires now).` }] };
-        } catch (err: any) {
-          return { content: [{ type: 'text', text: `Failed to trigger schedule: ${err.message}` }] };
+          return { content: [{ type: 'text', text: `Triggered schedule "${input.id}" — fires now.` }] };
+        } catch (err) {
+          return { content: [{ type: 'text', text: `Failed to trigger schedule: ${(err as Error).message}` }] };
         }
       },
     ),
-  ];
+  );
 
   return createSdkMcpServer({
     name: 'ted',
     version: '1.0.0',
-    tools: [
-      // ---- Memory tools ----
-      tool(
-        'memory_set',
-        'Create or update a memory. working = always in context, short_term = index in context, long_term = searchable.',
-        { tier: tierEnum, key: z.string(), content: z.string() },
-        async (args) => {
-          await setMemory(userId, args.tier as MemoryTier, args.key, args.content);
-          return { content: [{ type: 'text', text: `Memory "${args.key}" saved to ${args.tier}.` }] };
-        },
-      ),
-      tool(
-        'memory_get',
-        'Read the full content of a memory by key.',
-        { key: z.string() },
-        async (args) => {
-          const mem = await getMemory(userId, args.key);
-          if (!mem) return { content: [{ type: 'text', text: `No memory found with key "${args.key}".` }] };
-          return { content: [{ type: 'text', text: `[${mem.tier}] ${mem.key}:\n${mem.content}` }] };
-        },
-      ),
-      tool(
-        'memory_delete',
-        'Delete a memory by key.',
-        { key: z.string() },
-        async (args) => {
-          const ok = await deleteMemory(userId, args.key);
-          return {
-            content: [{ type: 'text', text: ok ? `Deleted "${args.key}".` : `No memory "${args.key}".` }],
-          };
-        },
-      ),
-      tool(
-        'memory_list',
-        'List all memories, optionally filtered by tier.',
-        { tier: tierEnum.optional() },
-        async (args) => {
-          const mems = await listMemories(userId, args.tier as MemoryTier | undefined);
-          if (mems.length === 0) return { content: [{ type: 'text', text: 'No memories found.' }] };
-          const lines = mems.map((m) => {
-            const preview = m.content.length > 80 ? m.content.slice(0, 80) + '...' : m.content;
-            return `[${m.tier}] ${m.key}: ${preview}`;
-          });
-          return { content: [{ type: 'text', text: lines.join('\n') }] };
-        },
-      ),
-      tool(
-        'memory_search',
-        'Search memories by keyword across keys and content.',
-        { query: z.string(), tier: tierEnum.optional() },
-        async (args) => {
-          const results = await searchMemories(userId, args.query, args.tier as MemoryTier | undefined);
-          if (results.length === 0) return { content: [{ type: 'text', text: `No memories matching "${args.query}".` }] };
-          const lines = results.map((m) => {
-            const preview = m.content.length > 80 ? m.content.slice(0, 80) + '...' : m.content;
-            return `[${m.tier}] ${m.key}: ${preview}`;
-          });
-          return { content: [{ type: 'text', text: lines.join('\n') }] };
-        },
-      ),
-
-      // ---- MCP server management (admin only) + schedules (always) ----
-      ...mcpTools,
-      ...scheduleTools,
-    ],
+    tools: allTools,
   });
 }

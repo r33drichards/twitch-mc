@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/ubuntu/twitch-mc/apps/sleet1213/.claude/hooks/on-todowrite.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "CronCreate|CronDelete|CronList",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/ubuntu/twitch-mc/apps/sleet1213/.claude/hooks/on-cron.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": [
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "ScheduleWakeup"
+    ]
+  }
+}
