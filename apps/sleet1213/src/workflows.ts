@@ -206,6 +206,7 @@ const { fireScheduledJs } = proxyActivities<typeof scheduleActivities>({
 export async function scheduledJs(
   scheduleId: string,
   code: string,
+  _title?: string,
 ): Promise<void> {
   await fireScheduledJs({ scheduleId, code });
 }

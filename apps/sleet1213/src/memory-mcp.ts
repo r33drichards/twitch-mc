@@ -347,6 +347,7 @@ export function createTedMcpServer(userId: string, opts?: TedMcpServerOptions) {
       'Create a recurring or one-shot scheduled JavaScript execution. The code runs directly on the mcp-v8 runtime (same as run_js) — NOT through the agent. Each schedule gets its own persistent V8 heap, so variables set with globalThis.x = ... survive across executions. Use this for lightweight recurring tasks that don\'t need the full agent (e.g. polling, data collection, periodic bot actions via mcp.callTool).',
       {
         id: z.string().describe('Unique schedule identifier (e.g. "health-check")'),
+        title: z.string().optional().describe('Human-readable title for HUD display (e.g. "Health Monitor"). Defaults to the schedule id.'),
         cron: z.string().optional().describe('Cron expression for recurring schedule (e.g. "*/5 * * * *")'),
         at: z.string().optional().describe('ISO 8601 timestamp for one-shot schedule (e.g. "2026-04-28T15:00:00Z")'),
         code: z.string().describe('JavaScript code to execute. Has access to globalThis for persistent state, console.log for output, fetch() for HTTP, and mcp.callTool(\'btone\', method, params) for Minecraft bot control.'),
@@ -375,7 +376,7 @@ export function createTedMcpServer(userId: string, opts?: TedMcpServerOptions) {
               type: 'startWorkflow' as const,
               workflowType: 'scheduledJs',
               taskQueue: TASK_QUEUE,
-              args: [input.id, input.code],
+              args: [input.id, input.code, input.title ?? input.id],
             },
             policies: {
               overlap: ScheduleOverlapPolicy.SKIP,
@@ -383,11 +384,13 @@ export function createTedMcpServer(userId: string, opts?: TedMcpServerOptions) {
             state: input.at ? { remainingActions: 1 } : undefined,
           });
           const kind = input.cron ? `recurring (${input.cron})` : `one-shot (${input.at})`;
+          const displayTitle = input.title ?? input.id;
           const codePreview = input.code.length > 80 ? input.code.slice(0, 80) + '...' : input.code;
           return {
             content: [{
               type: 'text',
               text: `Created JS schedule "${handle.scheduleId}" — ${kind}\n` +
+                    `  title: ${displayTitle}\n` +
                     `  heap: per-schedule persistent (schedule:${input.id})\n` +
                     `  code: ${codePreview}`,
             }],

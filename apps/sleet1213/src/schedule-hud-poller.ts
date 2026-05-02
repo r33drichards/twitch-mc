@@ -99,13 +99,18 @@ async function poll(client: ScheduleClient): Promise<void> {
         }
       }
 
-      // Extract prompt from action args
+      // Extract prompt/title from action args
       let prompt = '';
       const action = desc.action as any;
-      if (action?.args?.length >= 3) {
+      const wfType = action?.workflowType ?? '';
+      if (wfType === 'scheduledJs') {
+        // scheduledJs args: [scheduleId, code, title]
+        prompt = String(action?.args?.[2] ?? action?.args?.[0] ?? '').slice(0, 60);
+      } else if (action?.args?.length >= 3) {
+        // scheduledPrompt args: [sessionId, userId, prompt]
         prompt = String(action.args[2] ?? '').slice(0, 60);
-      } else if (action?.workflowType) {
-        prompt = String(action.workflowType);
+      } else if (wfType) {
+        prompt = String(wfType);
       }
 
       const paused = desc.state.paused;
