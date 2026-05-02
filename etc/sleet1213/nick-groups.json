@@ -62,6 +62,7 @@
       "requireMention": true,
       "agentConfig": {
         "allowedTools": [
+          "Agent",
           "Skill",
           "mcp__*"
         ],

@@ -59,17 +59,70 @@ node e2e/irc-e2e.mjs [--message "text"] [--timeout 90]
 
 ## Deploy
 
-Push to master. Railway auto-deploys `ted` and `ted-irc-bridge`.
+You are running on the host machine that the services deploy to. Infrastructure is managed by [numtide/system-manager](https://github.com/numtide/system-manager) via Nix. The flake at the repo root defines all systemd units (system and user level), config files under `/etc/`, and policies.
 
-After workflow-shape changes, terminate the old workflow:
+### Activating changes
+
+After editing config files, service units, or Nix modules, run:
+
+```bash
+nix run github:numtide/system-manager -- switch --flake .#default --sudo
 ```
-railway ssh -s ted -- 'node -e "
-const { Connection, Client } = require(\"@temporalio/client\");
-(async () => {
-  const conn = await Connection.connect({ address: process.env.TEMPORAL_ADDRESS });
-  const client = new Client({ connection: conn });
-  await client.workflow.getHandle(\"chat:irc-ted\").terminate(\"deploy reset\");
-  process.exit(0);
-})();
-"'
+
+(`nix` is at `/nix/var/nix/profiles/default/bin/nix` if not on `$PATH`.)
+
+This rebuilds the Nix closure and activates it — updating `/etc/` files, reloading systemd, and restarting changed services. There are also Makefile shortcuts:
+
+| Target | Description |
+|--------|-------------|
+| `make activate` | Run system-manager switch locally |
+| `make build` | Build the closure without activating (sanity check) |
+| `make diff` | Dry-run: show what `activate` would change |
+| `make deploy` | SSH to the host, `git pull`, and activate remotely |
+
+**Note:** system-manager activates config files and restarts services whose unit files changed, but it does **not** automatically restart services that merely read a config file at startup. If you change a config file like `nick-groups.json`, you still need to manually restart the service that consumes it:
+
+```bash
+systemctl --user restart sleet1213-irc
+```
+
+### Managed services
+
+**User-level** (`systemctl --user`):
+
+| Service | Description |
+|---------|-------------|
+| `sleet1213-webhook` | HTTP API + SSE streaming |
+| `sleet1213-irc` | IRC bridge (Twitch chat in/out) — depends on webhook |
+| `sleet1213-worker` | Temporal worker (Claude Agent SDK) |
+| `sleet1213-temporal` | Temporal dev server |
+| `sleet1213-mc-bridge` | MC chat bridge (btone SSE -> webhook) |
+| `sleet1213-hud-poller` | Schedule HUD poller (Temporal -> CronHud JSON) |
+| `opencode-web` | OpenCode web UI |
+
+**System-level** (`systemctl`):
+
+| Service | Description |
+|---------|-------------|
+| `btone-bot` | Minecraft headless client |
+| `btone-stream` | OBS/streaming pipeline |
+| `btone-audio` | PulseAudio game audio |
+| `xorg-headless` | Headless X server for rendering |
+
+### Managed config files
+
+| Path | Source |
+|------|--------|
+| `/etc/sleet1213/nick-groups.json` | `etc/sleet1213/nick-groups.json` |
+| `/etc/sleet1213/policies/skill-filesystem.rego` | `etc/sleet1213/policies/skill-filesystem.rego` |
+| `/etc/sleet1213/policies/skills-fs.json` | `etc/sleet1213/policies/skills-fs.json` |
+| `/etc/X11/xorg-headless.conf` | `etc/X11/xorg-headless.conf` |
+
+### Useful commands
+
+```bash
+systemctl --user status sleet1213-irc          # check service status
+systemctl --user restart sleet1213-irc         # restart a service
+systemctl --user list-units 'sleet1213-*'      # list all sleet1213 services
+journalctl --user -u sleet1213-irc -f          # tail logs
 ```
