@@ -3,7 +3,12 @@ package com.btone.c.handlers;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.registry.Registries;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Vec3d;
 
 /**
  * Curated, remap-safe helper API bound into every {@code debug.eval} script as
@@ -140,5 +145,70 @@ public final class ScriptApi {
             if (text.startsWith("/")) nh.sendChatCommand(text.substring(1));
             else nh.sendChatMessage(text);
         });
+    }
+
+    // ---- action verbs (interaction manager; same plumbing as world.* handlers) ----
+
+    /**
+     * Right-click / use the held main-hand item. Casts or reels a fishing rod,
+     * eats food, throws a pearl, etc. Returns true if the interaction was
+     * accepted by the client.
+     */
+    public boolean useItem() {
+        ActionResult r = mc.interactionManager.interactItem(p(), Hand.MAIN_HAND);
+        return r != null && r.isAccepted();
+    }
+
+    /** Swing the main hand (one attack/visual tick). */
+    public void swing() {
+        p().swingHand(Hand.MAIN_HAND);
+    }
+
+    /**
+     * Single attack tick against a block, auto-choosing the face toward the
+     * player. Call repeatedly (across ticks) to break it; one call just chips.
+     */
+    public boolean attackBlock(int bx, int by, int bz) {
+        BlockPos pos = new BlockPos(bx, by, bz);
+        boolean ok = mc.interactionManager.attackBlock(pos, faceToward(pos));
+        p().swingHand(Hand.MAIN_HAND);
+        return ok;
+    }
+
+    /**
+     * Place / use the held item against a block face. {@code side} is
+     * up/down/north/south/east/west, or null/empty to auto-pick the face toward
+     * the player. Returns true if accepted.
+     */
+    public boolean placeBlock(int bx, int by, int bz, String side) {
+        BlockPos pos = new BlockPos(bx, by, bz);
+        Direction dir = parseSide(side, pos);
+        BlockHitResult hit = new BlockHitResult(Vec3d.ofCenter(pos), dir, pos, false);
+        ActionResult r = mc.interactionManager.interactBlock(p(), Hand.MAIN_HAND, hit);
+        return r != null && r.isAccepted();
+    }
+
+    /** True while a fishing bobber is deployed (the line is cast). */
+    public boolean bobberOut() {
+        return p().fishHook != null;
+    }
+
+    private Direction faceToward(BlockPos pos) {
+        Vec3d eye = p().getEyePos();
+        Vec3d c = Vec3d.ofCenter(pos);
+        double dx = c.x - eye.x, dy = c.y - eye.y, dz = c.z - eye.z;
+        double ax = Math.abs(dx), ay = Math.abs(dy), az = Math.abs(dz);
+        if (ax > ay && ax > az) return dx > 0 ? Direction.WEST : Direction.EAST;
+        if (ay > az) return dy > 0 ? Direction.DOWN : Direction.UP;
+        return dz > 0 ? Direction.NORTH : Direction.SOUTH;
+    }
+
+    private Direction parseSide(String side, BlockPos pos) {
+        if (side != null && !side.isEmpty()) {
+            for (Direction d : Direction.values()) {
+                if (d.getName().equalsIgnoreCase(side)) return d;
+            }
+        }
+        return faceToward(pos);
     }
 }
