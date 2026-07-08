@@ -9,6 +9,7 @@ import com.btone.c.handlers.AgentStatusHandlers;
 import com.btone.c.handlers.ChatHandlers;
 import com.btone.c.handlers.ContainerHandlers;
 import com.btone.c.handlers.CraftingHandlers;
+import com.btone.c.handlers.EvalHandlers;
 import com.btone.c.handlers.PlayerHandlers;
 import com.btone.c.handlers.VisionHandlers;
 import com.btone.c.handlers.WorldReadHandlers;
@@ -81,6 +82,7 @@ public final class BtoneC implements ClientModInitializer {
             VisionHandlers.registerAll(router);
             AgentHandlers.registerAll(router);
             AgentStatusHandlers.registerAll(router);
+            EvalHandlers.registerAll(router);
 
             Map<String, Consumer<HttpExchange>> routes = new LinkedHashMap<>();
             routes.put("/health", ex -> BtoneHttpServer.write(ex, 200, "{\"ok\":true}"));

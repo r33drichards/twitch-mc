@@ -33,6 +33,14 @@ dependencies {
     include("com.fasterxml.jackson.core:jackson-core:2.17.2")
     include("com.fasterxml.jackson.core:jackson-annotations:2.17.2")
 
+    // Luaj — small (~500 KB), pure-Java Lua 5.2 interpreter. Chosen over
+    // standalone Nashorn (Nashorn was removed from the JDK in 15+; the standalone
+    // artifact is larger and JS is off-theme) and GraalVM JS (tens of MB). Pure
+    // Java means it runs on stock JDK 17 with no ScriptEngineManager dependency,
+    // and Lua matches this project's CC/Lua heritage. Single jar, no transitives.
+    implementation("org.luaj:luaj-jse:3.0.1")
+    include("org.luaj:luaj-jse:3.0.1")
+
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
 }
 

@@ -214,6 +214,20 @@ public final class Schema {
         ObjectNode fo = schemas.putObject("AnyObject");
         fo.put("type", "object");
         fo.put("additionalProperties", true);
+
+        // EvalResult — output of debug.eval.
+        ObjectNode ev = schemas.putObject("EvalResult");
+        ev.put("type", "object");
+        ev.put("description", "Result of an in-JVM Lua eval. `result` is the "
+                + "script's return value(s) JSON-serialised; `stdout` is captured "
+                + "print output; on failure `ok` is false and `error` holds the "
+                + "Lua error message.");
+        ObjectNode evp = ev.putObject("properties");
+        evp.set("ok", primitive("boolean"));
+        evp.putObject("result").put("description",
+                "Script return value (any JSON type; multiple returns become an array).");
+        evp.set("stdout", primitive("string"));
+        evp.set("error", primitive("string"));
     }
 
     // ===== methods =====
@@ -234,6 +248,23 @@ public final class Schema {
                 "OpenRPC self-introspection. Returns the full schema of this service.",
                 params(),
                 resRef("AnyObject"));
+
+        method(methods, schemas, "debug.eval",
+                "Run an arbitrary Lua snippet IN THE JVM on the client thread. "
+                        + "Pre-bound globals: `api` (curated, remap-safe helper — use "
+                        + "this in production: api:health(), api:pos-style getters, "
+                        + "api:blockAt(x,y,z), api:chat(s)), plus raw `mc`/`player`/`world` "
+                        + "(dev-only for reflective method calls: readable names like "
+                        + "player:getHealth() resolve in the Loom dev workspace but NOT "
+                        + "against the remapped production jar). Return value is JSON-"
+                        + "serialised; print() output is captured as `stdout`. "
+                        + "Zero-codegen escape hatch — arbitrary code execution.",
+                params(
+                        param("code", "string", true, "Lua source. Its return value becomes `result`."),
+                        param("timeout_ms", "integer", false,
+                                "In-VM deadline (default 3000, max 15000). Enforced by an "
+                                        + "instruction-count hook that aborts a runaway loop.")),
+                resRef("EvalResult"));
 
         // ----- player -----
         method(methods, schemas, "player.state",
