@@ -1,7 +1,12 @@
 package com.btone.c.handlers;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.enchantment.EnchantmentHelper;
+import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
@@ -9,6 +14,10 @@ import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Curated, remap-safe helper API bound into every {@code debug.eval} script as
@@ -191,6 +200,58 @@ public final class ScriptApi {
     /** True while a fishing bobber is deployed (the line is cast). */
     public boolean bobberOut() {
         return p().fishHook != null;
+    }
+
+    // ---- rich item reads (enchants / durability / custom name) ----
+    // Returned as JSON strings: the eval->JSON path stringifies raw Java objects,
+    // so we serialize here and hand back a plain string the caller can parse.
+
+    private static final ObjectMapper ITEM_JSON = new ObjectMapper();
+
+    private Map<String, Object> stackMap(ItemStack st, int slot) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("slot", slot);
+        m.put("id", Registries.ITEM.getId(st.getItem()).toString());
+        m.put("count", st.getCount());
+        if (st.isDamageable()) {
+            m.put("durability", st.getMaxDamage() - st.getDamage());
+            m.put("maxDurability", st.getMaxDamage());
+        }
+        if (st.hasCustomName()) m.put("customName", st.getName().getString());
+        Map<Enchantment, Integer> ench = EnchantmentHelper.get(st);
+        if (!ench.isEmpty()) {
+            Map<String, Integer> e = new LinkedHashMap<>();
+            for (Map.Entry<Enchantment, Integer> en : ench.entrySet()) {
+                var id = Registries.ENCHANTMENT.getId(en.getKey());
+                e.put(id != null ? id.toString() : en.getKey().toString(), en.getValue());
+            }
+            m.put("enchants", e);
+        }
+        return m;
+    }
+
+    /** Player main inventory (slots 0-35), non-empty stacks with full detail, as a JSON array string. */
+    public String inventoryJson() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        var main = p().getInventory().main;
+        for (int i = 0; i < main.size(); i++) {
+            ItemStack st = main.get(i);
+            if (!st.isEmpty()) out.add(stackMap(st, i));
+        }
+        try { return ITEM_JSON.writeValueAsString(out); } catch (Exception e) { return "[]"; }
+    }
+
+    /** Currently-open container's own slots (not player inventory), with full detail, as a JSON array string. */
+    public String containerJson() {
+        if (!(mc.currentScreen instanceof HandledScreen<?> hs)) return "[]";
+        var handler = hs.getScreenHandler();
+        int playerInvStart = handler.slots.size() - 36;
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (int i = 0; i < playerInvStart; i++) {
+            ItemStack st = handler.slots.get(i).getStack();
+            if (!st.isEmpty()) out.add(stackMap(st, i));
+        }
+        try { return ITEM_JSON.writeValueAsString(out); } catch (Exception e) { return "[]"; }
     }
 
     private Direction faceToward(BlockPos pos) {
