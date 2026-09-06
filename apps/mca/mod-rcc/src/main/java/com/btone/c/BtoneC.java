@@ -127,8 +127,8 @@ public final class BtoneC implements ClientModInitializer {
                 // World save → server kicks the slow client). 6 chunks is
                 // playable for the bot's needs and keeps frame budget free.
                 try {
-                    c.options.getViewDistance().setValue(6);
-                    c.options.getSimulationDistance().setValue(6);
+                    c.options.renderDistance().set(6);
+                    c.options.simulationDistance().set(6);
                     LOG.info("btone-mod-c: view/simulation distance set to 6");
                 } catch (Throwable t) {
                     LOG.warn("btone-mod-c: could not lower view distance", t);

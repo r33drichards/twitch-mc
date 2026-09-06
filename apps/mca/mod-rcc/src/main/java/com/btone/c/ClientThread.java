@@ -1,6 +1,6 @@
 package com.btone.c;
 
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -18,8 +18,8 @@ public final class ClientThread {
     private ClientThread() {}
 
     public static <T> T call(long timeoutMs, Supplier<T> block) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.isOnThread()) return block.get();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.isSameThread()) return block.get();
         try {
             return mc.submit(block::get).get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException ie) {
@@ -35,8 +35,8 @@ public final class ClientThread {
     }
 
     public static void run(Runnable block) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.isOnThread()) block.run();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.isSameThread()) block.run();
         else mc.execute(block);
     }
 }

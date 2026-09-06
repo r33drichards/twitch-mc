@@ -5,22 +5,22 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.NativeImage;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.util.ScreenshotRecorder;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.EntityHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector4f;
@@ -48,17 +48,16 @@ import java.util.concurrent.TimeoutException;
  *
  * <ol>
  *   <li><b>No render-thread blocking.</b>
- *       {@link ScreenshotRecorder#takeScreenshot} schedules an async GPU
- *       readback whose completion callback also runs on the render thread.
- *       If we block on its future from the same thread, the callback can
- *       never drain. So the HTTP thread (off render thread) is the only
- *       place we await futures.</li>
+ *       {@link Screenshot#takeScreenshot(RenderTarget, java.util.function.Consumer)}
+ *       enqueues a GPU texture→buffer copy whose completion callback also runs
+ *       on the render thread. If we block on its future from the same thread,
+ *       the callback can never drain. So the HTTP thread (off render thread) is
+ *       the only place we await futures.</li>
  *   <li><b>State changes don't take effect until the NEXT render.</b>
- *       Setting {@code player.setYaw(...)} or {@code mc.options.hudHidden}
- *       just mutates state; the captured framebuffer reflects the most
- *       recently rendered frame, which used the previous state. So we have
- *       to apply the change, let MC render one frame with it, THEN call
- *       takeScreenshot.</li>
+ *       Setting {@code player.setYRot(...)} or toggling the HUD just mutates
+ *       state; the captured render target reflects the most recently rendered
+ *       frame, which used the previous state. So we have to apply the change,
+ *       let MC render one frame with it, THEN call takeScreenshot.</li>
  * </ol>
  *
  * <p>Pipeline (all enqueueing happens off the render thread; everything
@@ -66,20 +65,18 @@ import java.util.concurrent.TimeoutException;
  *
  * <ol>
  *   <li>HTTP thread: create {@code respFuture}, submit prep runnable via
- *       {@link MinecraftClient#execute(Runnable)}, await respFuture.get(5s).</li>
+ *       {@link Minecraft#execute(Runnable)}, await respFuture.get(5s).</li>
  *   <li>Prep runnable (render thread, runs at frame N's task drain BEFORE
  *       the frame's render): snapshot saved state, apply yaw/pitch/HUD
- *       override, run {@code Camera.update} so our matrix snapshot reflects
- *       the override, compute matrices + entity/block/crosshair annotations,
- *       enqueue a {@link PendingCapture} into {@code PENDING}.</li>
- *   <li>Frame N proceeds: {@code MinecraftClient.render} clears the
- *       framebuffer and calls {@code gameRenderer.render} — which uses the
- *       overridden player rotation. Framebuffer now holds the override
- *       scene.</li>
- *   <li>Frame N+1 starts. END_CLIENT_TICK fires (BEFORE frame N+1's clear).
- *       Tick handler dequeues the pending capture, calls takeScreenshot
- *       (which reads the still-valid frame-N framebuffer), restores saved
- *       state immediately, and registers the GPU-readback callback that
+ *       override, derive the override view-projection matrix, compute
+ *       entity/block/crosshair annotations, enqueue a {@link PendingCapture}
+ *       into {@code PENDING}.</li>
+ *   <li>Frame N proceeds and renders with the overridden player rotation.
+ *       The main render target now holds the override scene.</li>
+ *   <li>Frame N+1 starts. END_CLIENT_TICK fires before the next render. The
+ *       tick handler dequeues the pending capture, calls takeScreenshot
+ *       (which enqueues a copy of the still-valid frame-N color texture),
+ *       restores saved state immediately, and the GPU-readback callback
  *       encodes PNG/JPEG and completes respFuture.</li>
  *   <li>HTTP thread unblocks, returns the response.</li>
  * </ol>
@@ -87,6 +84,20 @@ import java.util.concurrent.TimeoutException;
  * <p>Panorama chains N captures sequentially via
  * {@link CompletableFuture#thenCompose}; only the final aggregated future
  * is awaited on the HTTP thread.
+ *
+ * <h2>26.2 notes</h2>
+ *
+ * <p>The 26.x render pipeline replaced {@code Framebuffer} with
+ * {@link RenderTarget} (reached via {@code gameRenderer.mainRenderTarget()},
+ * exactly what vanilla F2 grabs) and made the screenshot readback
+ * callback-based instead of returning a {@code NativeImage} synchronously.
+ * {@code Camera.update(...)} no longer accepts an explicit rotation, so
+ * instead of mutating the camera to snapshot matrices we reconstruct the
+ * override view matrix from {@code Camera}'s own convention
+ * ({@code rotationYXZ(PI - yaw, -pitch, 0)}) and recover the pure projection
+ * matrix as {@code P = (P*V) * V⁻¹} from the camera's cached matrices.
+ * {@code Options.hudHidden} moved to {@code Minecraft.gui.hud} as
+ * {@code isHidden()} / {@code toggle()}.
  */
 public final class VisionHandlers {
     private static final ObjectMapper M = new ObjectMapper();
@@ -95,6 +106,7 @@ public final class VisionHandlers {
     private static final int MAX_ENTITIES = 64;
     private static final int MAX_BLOCKS = 128;
     private static final double ENTITY_RANGE = 64.0;
+    private static final float DEG_TO_RAD = 0.017453292f;
 
     private VisionHandlers() {}
 
@@ -116,12 +128,12 @@ public final class VisionHandlers {
                 "minecraft:repeater", "minecraft:comparator", "minecraft:daylight_detector",
                 "minecraft:lever",
         };
-        for (String id : explicit) s.add(new Identifier(id));
+        for (String id : explicit) s.add(Identifier.parse(id));
         // Color- and wood-suffix families — iterate the registry once at class
-        // load. Registries.BLOCK is populated long before any handler dispatch.
+        // load. BuiltInRegistries.BLOCK is populated long before any dispatch.
         String[] suffixes = {"_bed", "_door", "_trapdoor", "_button", "_pressure_plate",
                 "_sign", "_hanging_sign", "_wall_sign", "_wall_hanging_sign"};
-        for (Identifier id : Registries.BLOCK.getIds()) {
+        for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
             String path = id.getPath();
             for (String suf : suffixes) {
                 if (path.endsWith(suf)) { s.add(id); break; }
@@ -136,8 +148,8 @@ public final class VisionHandlers {
      * <p>Static because Fabric's {@link ClientTickEvents} has no
      * {@code unregister} — we install ONE shared listener at startup that
      * drains this queue forever. Each entry counts down ticks; when ready,
-     * the listener calls {@link ScreenshotRecorder#takeScreenshot} for it
-     * and restores the saved state.
+     * the listener calls {@link Screenshot#takeScreenshot} for it and
+     * restores the saved state.
      */
     private static final java.util.concurrent.ConcurrentLinkedQueue<PendingCapture> PENDING =
             new java.util.concurrent.ConcurrentLinkedQueue<>();
@@ -148,7 +160,7 @@ public final class VisionHandlers {
         r.register("world.screenshot", params -> {
             CaptureRequest req = CaptureRequest.of(params);
             CompletableFuture<ObjectNode> fut = scheduleCapture(req);
-            return await(fut, TIMEOUT_MS, "capture_timeout");
+            return await0(fut, TIMEOUT_MS, "capture_timeout");
         });
         r.register("world.screenshot_panorama", params -> {
             CaptureRequest base = CaptureRequest.of(params);
@@ -159,10 +171,10 @@ public final class VisionHandlers {
             // override is computed from a consistent snapshot. We do this via
             // a small future (no GPU work, so no deadlock risk).
             CompletableFuture<float[]> seedFut = new CompletableFuture<>();
-            MinecraftClient.getInstance().execute(() -> {
-                PlayerEntity p = MinecraftClient.getInstance().player;
-                float by = (base.yaw != null) ? base.yaw : (p != null ? p.getYaw() : 0f);
-                float bp = (base.pitch != null) ? base.pitch : (p != null ? p.getPitch() : 0f);
+            Minecraft.getInstance().execute(() -> {
+                Player p = Minecraft.getInstance().player;
+                float by = (base.yaw != null) ? base.yaw : (p != null ? p.getYRot() : 0f);
+                float bp = (base.pitch != null) ? base.pitch : (p != null ? p.getXRot() : 0f);
                 seedFut.complete(new float[]{by, bp});
             });
             float[] seed = await0(seedFut, 1_000, "panorama_seed_timeout");
@@ -241,8 +253,8 @@ public final class VisionHandlers {
         final boolean override;
         // Override values (also stamped into the response.camera node).
         final float useYaw, usePitch;
-        // Camera + projection snapshot taken AFTER override applied.
-        final Vec3d camPosSnapshot;
+        // Camera snapshot taken AFTER override applied.
+        final Vec3 camPosSnapshot;
         final ArrayNode entityAnns;
         final ArrayNode blockAnns;
         final ObjectNode crossAnn;
@@ -253,7 +265,7 @@ public final class VisionHandlers {
         PendingCapture(CaptureRequest req, CompletableFuture<ObjectNode> respFuture,
                        float sy, float sp, float shy, float sby, boolean shud,
                        boolean override, float useYaw, float usePitch,
-                       Vec3d camPos, ArrayNode entities, ArrayNode blocks,
+                       Vec3 camPos, ArrayNode entities, ArrayNode blocks,
                        ObjectNode crosshair, int framesUntilCapture) {
             this.req = req; this.respFuture = respFuture;
             this.savedYaw = sy; this.savedPitch = sp;
@@ -282,15 +294,15 @@ public final class VisionHandlers {
     /**
      * Per-tick drain: each pending capture decrements its
      * {@code framesUntilCapture}. When it reaches 0, we know the previous
-     * frame rendered with the override applied; the framebuffer holds that
-     * scene. Take the screenshot, restore state immediately, and let the
+     * frame rendered with the override applied; the main render target holds
+     * that scene. Take the screenshot, restore state immediately, and let the
      * GPU-readback callback complete the future.
      */
-    private static void onEndClientTick(MinecraftClient mc) {
+    private static void onEndClientTick(Minecraft mc) {
         if (PENDING.isEmpty()) return;
-        // Drain at most one ready capture per tick. The framebuffer can only
+        // Drain at most one ready capture per tick. The render target can only
         // hold one scene at a time, so processing N captures back-to-back
-        // would all read the SAME framebuffer (incorrect). Sequencing is
+        // would all read the SAME texture (incorrect). Sequencing is
         // enforced by panorama's CompletableFuture.thenCompose chain anyway.
         java.util.Iterator<PendingCapture> it = PENDING.iterator();
         while (it.hasNext()) {
@@ -309,63 +321,78 @@ public final class VisionHandlers {
     }
 
     /** Schedule the GPU readback for a ready PendingCapture, then restore state. */
-    private static void runCapture(MinecraftClient mc, PendingCapture pc) {
-        Framebuffer fb = mc.getFramebuffer();
-        if (fb == null) {
+    private static void runCapture(Minecraft mc, PendingCapture pc) {
+        RenderTarget rt = (mc.gameRenderer != null) ? mc.gameRenderer.mainRenderTarget() : null;
+        if (rt == null) {
             pc.respFuture.completeExceptionally(new IllegalStateException("no_framebuffer"));
             restoreState(mc, pc);
             return;
         }
         try {
-            // 1.20.1's ScreenshotRecorder.takeScreenshot(Framebuffer) is
-            // synchronous: it reads the framebuffer texture back on this
-            // (render) thread and returns the NativeImage directly. We own
-            // the returned image and hand it to encodeAndAssemble, which
-            // closes it.
-            NativeImage img = ScreenshotRecorder.takeScreenshot(fb);
-            try {
-                if (img == null) {
-                    pc.respFuture.completeExceptionally(
-                            new IllegalStateException("null_native_image"));
-                } else {
-                    ObjectNode out = encodeAndAssemble(
-                            pc.req, img, pc.useYaw, pc.usePitch, pc.camPosSnapshot,
-                            pc.entityAnns, pc.blockAnns, pc.crossAnn);
-                    pc.respFuture.complete(out);
+            // 26.2's Screenshot.takeScreenshot is ASYNC: it enqueues a
+            // texture→buffer copy on the command encoder and invokes the
+            // consumer once the readback lands (still on the render thread).
+            // The consumer OWNS the NativeImage — vanilla's own callback hands
+            // it to the IO pool, which closes it — so encodeAndAssemble closes
+            // it for us.
+            Screenshot.takeScreenshot(rt, img -> {
+                try {
+                    if (img == null) {
+                        pc.respFuture.completeExceptionally(
+                                new IllegalStateException("null_native_image"));
+                    } else {
+                        ObjectNode out = encodeAndAssemble(
+                                pc.req, img, pc.useYaw, pc.usePitch, pc.camPosSnapshot,
+                                pc.entityAnns, pc.blockAnns, pc.crossAnn);
+                        pc.respFuture.complete(out);
+                    }
+                } catch (Throwable t) {
+                    pc.respFuture.completeExceptionally(t);
                 }
-            } catch (Throwable t) {
-                pc.respFuture.completeExceptionally(t);
-            }
+            });
         } finally {
-            // Restore IMMEDIATELY after the readback. The framebuffer copy is
-            // already done; mutating player state now affects only the NEXT
-            // render frame (which is what the human player will see).
+            // Restore IMMEDIATELY after the copy is enqueued. The GPU already
+            // holds the frame-N pixels; mutating player state now affects only
+            // the NEXT render frame (which is what the human player sees).
             restoreState(mc, pc);
         }
     }
 
-    private static void restoreState(MinecraftClient mc, PendingCapture pc) {
+    private static void restoreState(Minecraft mc, PendingCapture pc) {
         try {
-            mc.options.hudHidden = pc.savedHud;
+            setHudHidden(mc, pc.savedHud);
             if (pc.override && mc.player != null) {
-                mc.player.setYaw(pc.savedYaw);
-                mc.player.setPitch(pc.savedPitch);
-                mc.player.setHeadYaw(pc.savedHeadYaw);
-                mc.player.setBodyYaw(pc.savedBodyYaw);
-                // Mirror the last* / head / body field stomp from prep.
-                // Without this, the next-tick render lerp from the override
-                // last* values back toward the restored yaw causes a visible
-                // camera spin between successive panorama frames.
-                mc.player.prevYaw = pc.savedYaw;
-                mc.player.prevPitch = pc.savedPitch;
-                mc.player.prevHeadYaw = pc.savedHeadYaw;
-                mc.player.prevBodyYaw = pc.savedBodyYaw;
-                mc.player.headYaw = pc.savedHeadYaw;
-                mc.player.bodyYaw = pc.savedBodyYaw;
+                mc.player.setYRot(pc.savedYaw);
+                mc.player.setXRot(pc.savedPitch);
+                mc.player.setYHeadRot(pc.savedHeadYaw);
+                mc.player.setYBodyRot(pc.savedBodyYaw);
+                // Mirror the *O (previous-tick) / head / body field stomp from
+                // prep. Without this, the next-tick render lerp from the
+                // override *O values back toward the restored yaw causes a
+                // visible camera spin between successive panorama frames.
+                mc.player.yRotO = pc.savedYaw;
+                mc.player.xRotO = pc.savedPitch;
+                mc.player.yHeadRotO = pc.savedHeadYaw;
+                mc.player.yBodyRotO = pc.savedBodyYaw;
+                mc.player.yHeadRot = pc.savedHeadYaw;
+                mc.player.yBodyRot = pc.savedBodyYaw;
             }
         } catch (Throwable ignored) {
             // Swallow — restoration must never throw past the dispatcher.
         }
+    }
+
+    /**
+     * 26.2 dropped {@code Options.hudHidden} in favour of {@code Hud}'s own
+     * flag, which only exposes a toggle — so read-then-flip.
+     */
+    private static void setHudHidden(Minecraft mc, boolean hidden) {
+        if (mc.gui == null || mc.gui.hud == null) return;
+        if (mc.gui.hud.isHidden() != hidden) mc.gui.hud.toggle();
+    }
+
+    private static boolean isHudHidden(Minecraft mc) {
+        return mc.gui != null && mc.gui.hud != null && mc.gui.hud.isHidden();
     }
 
     /**
@@ -380,75 +407,68 @@ public final class VisionHandlers {
      */
     private static CompletableFuture<ObjectNode> scheduleCapture(CaptureRequest req) {
         CompletableFuture<ObjectNode> respFuture = new CompletableFuture<>();
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
         mc.execute(() -> {
             try {
-                if (mc.world == null || mc.player == null) {
+                if (mc.level == null || mc.player == null) {
                     respFuture.completeExceptionally(new IllegalStateException("no_world"));
                     return;
                 }
 
-                final float savedYaw = mc.player.getYaw();
-                final float savedPitch = mc.player.getPitch();
-                final float savedHeadYaw = mc.player.getHeadYaw();
-                final float savedBodyYaw = mc.player.getBodyYaw();
-                final boolean savedHud = mc.options.hudHidden;
+                final float savedYaw = mc.player.getYRot();
+                final float savedPitch = mc.player.getXRot();
+                final float savedHeadYaw = mc.player.getYHeadRot();
+                final float savedBodyYaw = mc.player.yBodyRot;
+                final boolean savedHud = isHudHidden(mc);
                 final boolean override = (req.yaw != null) || (req.pitch != null);
                 final float useYaw = (req.yaw != null) ? req.yaw : savedYaw;
                 final float usePitch = (req.pitch != null) ? req.pitch : savedPitch;
 
                 if (override) {
-                    mc.player.setYaw(useYaw);
-                    mc.player.setPitch(usePitch);
-                    mc.player.setHeadYaw(useYaw);
-                    mc.player.setBodyYaw(useYaw);
-                    // Camera rendering uses lerp(lastYaw, yaw, tickDelta) for
-                    // every angle. If we only set yaw, MC interpolates against
-                    // the OLD lastYaw and the rendered frame is a tween between
-                    // saved and override. Stomp the last* fields too so there's
+                    mc.player.setYRot(useYaw);
+                    mc.player.setXRot(usePitch);
+                    mc.player.setYHeadRot(useYaw);
+                    mc.player.setYBodyRot(useYaw);
+                    // Camera rendering uses lerp(yRotO, yRot, partialTick) for
+                    // every angle. If we only set yRot, MC interpolates against
+                    // the OLD yRotO and the rendered frame is a tween between
+                    // saved and override. Stomp the *O fields too so there's
                     // nothing to interpolate from — the override frame is the
                     // override yaw exactly.
-                    mc.player.prevYaw = useYaw;
-                    mc.player.prevPitch = usePitch;
-                    mc.player.prevHeadYaw = useYaw;
-                    mc.player.prevBodyYaw = useYaw;
-                    mc.player.headYaw = useYaw;
-                    mc.player.bodyYaw = useYaw;
-                    if (mc.gameRenderer != null && mc.gameRenderer.getCamera() != null) {
-                        mc.gameRenderer.getCamera().update(mc.world, mc.player, false, false, 1.0f);
-                    }
+                    mc.player.yRotO = useYaw;
+                    mc.player.xRotO = usePitch;
+                    mc.player.yHeadRotO = useYaw;
+                    mc.player.yBodyRotO = useYaw;
+                    mc.player.yHeadRot = useYaw;
+                    mc.player.yBodyRot = useYaw;
                 }
-                mc.options.hudHidden = !req.includeHud;
+                setHudHidden(mc, !req.includeHud);
 
-                // Snapshot matrices + annotations using the OVERRIDE camera.
-                // These are computed on this prep frame; the actual scene render
-                // (with the override applied) happens AFTER this runnable returns,
-                // and the screenshot fires one tick after that.
-                final Camera cam = mc.gameRenderer.getCamera();
-                final Vec3d camPosSnapshot = cam.getPos();
-                final Quaternionf invRot = cam.getRotation().conjugate(new Quaternionf());
-                final Matrix4f viewSnapshot = new Matrix4f().rotation(invRot);
-                final float fov = mc.options.getFov().getValue().floatValue();
-                final Matrix4f projSnapshot = mc.gameRenderer.getBasicProjectionMatrix(fov);
+                // Snapshot the view-projection matrix for the OVERRIDE camera.
+                // 26.2's Camera.update(DeltaTracker) can't be handed an explicit
+                // rotation any more, so instead of mutating the camera we
+                // rebuild the view rotation from Camera's own convention and
+                // reuse the camera's current projection.
+                final Camera cam = mc.gameRenderer.mainCamera();
+                final Vec3 camPosSnapshot = cam.position();
+                final Matrix4f vpSnapshot = overrideViewProjection(cam, useYaw, usePitch);
 
                 final ArrayNode entityAnns =
-                        entityAnnotations(mc, camPosSnapshot, viewSnapshot, projSnapshot);
+                        entityAnnotations(mc, camPosSnapshot, vpSnapshot);
                 final ArrayNode blockAnns =
-                        blockAnnotations(mc, camPosSnapshot, viewSnapshot, projSnapshot, req.annotateRange);
+                        blockAnnotations(mc, camPosSnapshot, vpSnapshot, req.annotateRange);
                 final ObjectNode crossAnn = crosshairAnnotation(mc);
 
                 // framesUntilCapture = 2 because of MC's render-loop ordering:
-                //   This prep runnable runs at MinecraftClient.render line 1319
-                //     (mc.execute task drain).
-                //   END_CLIENT_TICK fires at line 1325 (inside this.tick()).
-                //   Framebuffer clear is at line 1352.
-                //   gameRenderer.render with the override is at line 1358.
-                // So the SAME frame's END_CLIENT_TICK (post-prep) sees a
-                // framebuffer that still holds the PREVIOUS render. We must
-                // wait one more tick: with counter=2, the first END_CLIENT_TICK
-                // (frame N) decrements 2→1 (skip), MC then renders the override
-                // at line 1358, and the NEXT END_CLIENT_TICK (frame N+1) sees
-                // counter 1→0 and captures the override-rendered framebuffer.
+                //   This prep runnable runs during the client thread's task
+                //   drain, END_CLIENT_TICK fires shortly after (still before
+                //   the frame's render), and the actual render — the one that
+                //   uses our override — happens later in the same frame.
+                // So the SAME frame's END_CLIENT_TICK (post-prep) would read a
+                // render target that still holds the PREVIOUS frame. With
+                // counter=2, the first END_CLIENT_TICK decrements 2→1 (skip),
+                // MC renders the override, and the NEXT END_CLIENT_TICK sees
+                // 1→0 and captures the override-rendered target.
                 PENDING.add(new PendingCapture(
                         req, respFuture,
                         savedYaw, savedPitch, savedHeadYaw, savedBodyYaw, savedHud,
@@ -456,17 +476,31 @@ public final class VisionHandlers {
                         camPosSnapshot, entityAnns, blockAnns, crossAnn,
                         2));
             } catch (Throwable t) {
-                // Best-effort restore on failure to enqueue.
-                try {
-                    if (mc.player != null) {
-                        // We don't know what was saved at this point, so just
-                        // swallow. Nothing was promised to the caller yet.
-                    }
-                } catch (Throwable ignored) {}
                 respFuture.completeExceptionally(t);
             }
         });
         return respFuture;
+    }
+
+    /**
+     * Build {@code P · V(yaw,pitch)} for an arbitrary rotation.
+     *
+     * <p>{@link Camera#getViewRotationProjectionMatrix} returns {@code P · V}
+     * for the camera's CURRENT rotation and {@link Camera#getViewRotationMatrix}
+     * returns that same {@code V}, so the pure projection is
+     * {@code P = (P·V) · V⁻¹}. {@code V} is a pure rotation, so the inverse is
+     * exact. The override {@code V} follows {@code Camera.setRotation}:
+     * {@code rotationYXZ(π − yaw·deg, −pitch·deg, 0)}, then conjugated (view
+     * matrices are the inverse of the camera orientation).
+     */
+    private static Matrix4f overrideViewProjection(Camera cam, float yaw, float pitch) {
+        Matrix4f viewCurrent = cam.getViewRotationMatrix(new Matrix4f());
+        Matrix4f proj = cam.getViewRotationProjectionMatrix(new Matrix4f())
+                .mul(viewCurrent.invert());
+        Quaternionf rot = new Quaternionf().rotationYXZ(
+                (float) Math.PI - yaw * DEG_TO_RAD, -pitch * DEG_TO_RAD, 0.0f);
+        Matrix4f viewOverride = new Matrix4f().rotation(rot.conjugate());
+        return proj.mul(viewOverride);
     }
 
     /** Image conversion + base64 + envelope. Runs inside the GPU-readback callback. */
@@ -474,7 +508,7 @@ public final class VisionHandlers {
                                                 NativeImage img,
                                                 float useYaw,
                                                 float usePitch,
-                                                Vec3d camPos,
+                                                Vec3 camPos,
                                                 ArrayNode entityAnns,
                                                 ArrayNode blockAnns,
                                                 ObjectNode crossAnn) throws Exception {
@@ -491,6 +525,10 @@ public final class VisionHandlers {
         BufferedImage finalImg = (outW == srcW && outH == srcH) ? buf : downscale(buf, outW, outH);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        if (req.format.equals("jpeg")) {
+            // JPEG has no alpha channel; ImageIO refuses TYPE_INT_ARGB input.
+            finalImg = toOpaque(finalImg);
+        }
         ImageIO.write(finalImg, req.format.equals("jpeg") ? "jpeg" : "png", baos);
         String base64 = java.util.Base64.getEncoder().encodeToString(baos.toByteArray());
 
@@ -553,7 +591,11 @@ public final class VisionHandlers {
     private static BufferedImage nativeToBuffered(NativeImage ni) {
         int w = ni.getWidth(), h = ni.getHeight();
         BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        int[] pixels = ni.makePixelArray();
+        // getPixels() is row-major ARGB (bulk ABGR read + ARGB.fromABGR per
+        // pixel) and requires an RGBA-format image — which is exactly what
+        // Screenshot's readback allocates. It replaces the now-deprecated
+        // makePixelArray(), which does the same thing one getPixel() at a time.
+        int[] pixels = ni.getPixels();
         out.setRGB(0, 0, w, h, pixels, 0, w);
         return out;
     }
@@ -573,6 +615,18 @@ public final class VisionHandlers {
         return dst;
     }
 
+    private static BufferedImage toOpaque(BufferedImage src) {
+        BufferedImage dst = new BufferedImage(src.getWidth(), src.getHeight(),
+                BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = dst.createGraphics();
+        try {
+            g.drawImage(src, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        return dst;
+    }
+
     // --- Projection ---------------------------------------------------------
 
     /**
@@ -580,14 +634,13 @@ public final class VisionHandlers {
      * top-left). Returns {@code null} if behind camera or off-screen. The
      * caller multiplies by whatever pixel resolution it eventually emits.
      */
-    private static float[] projectNorm(Vec3d worldPos, Vec3d camPos, Matrix4f view, Matrix4f proj) {
+    private static float[] projectNorm(Vec3 worldPos, Vec3 camPos, Matrix4f viewProj) {
         Vector4f v = new Vector4f(
                 (float) (worldPos.x - camPos.x),
                 (float) (worldPos.y - camPos.y),
                 (float) (worldPos.z - camPos.z),
                 1.0f);
-        view.transform(v);
-        proj.transform(v);
+        viewProj.transform(v);
         if (v.w <= 0.0001f) return null;
         float ndcX = v.x / v.w;
         float ndcY = v.y / v.w;
@@ -599,20 +652,19 @@ public final class VisionHandlers {
 
     // --- Annotation builders (project to NORMALIZED [0..1] coords) ---------
 
-    private static ArrayNode entityAnnotations(MinecraftClient mc, Vec3d camPos,
-                                               Matrix4f view, Matrix4f proj) {
+    private static ArrayNode entityAnnotations(Minecraft mc, Vec3 camPos, Matrix4f viewProj) {
         ArrayNode arr = M.createArrayNode();
-        if (mc.world == null) return arr;
+        if (mc.level == null) return arr;
         record Hit(Entity e, float[] center, float minU, float minV, float maxU, float maxV, double dist) {}
         List<Hit> hits = new ArrayList<>();
-        for (Entity e : mc.world.getEntities()) {
+        for (Entity e : mc.level.entitiesForRendering()) {
             if (e == null || e == mc.player || !e.isAlive() || e.isRemoved()) continue;
-            double dist = e.getPos().distanceTo(camPos);
+            double dist = e.position().distanceTo(camPos);
             if (dist > ENTITY_RANGE) continue;
-            Vec3d center = e.getPos().add(0, e.getBoundingBox().getYLength() * 0.5, 0);
-            float[] c = projectNorm(center, camPos, view, proj);
+            Vec3 center = e.position().add(0, e.getBoundingBox().getYsize() * 0.5, 0);
+            float[] c = projectNorm(center, camPos, viewProj);
             if (c == null) continue;
-            Box bb = e.getBoundingBox();
+            AABB bb = e.getBoundingBox();
             float minU = Float.POSITIVE_INFINITY, minV = Float.POSITIVE_INFINITY;
             float maxU = Float.NEGATIVE_INFINITY, maxV = Float.NEGATIVE_INFINITY;
             int seen = 0;
@@ -620,7 +672,7 @@ public final class VisionHandlers {
                 double cx = ((i & 1) == 0) ? bb.minX : bb.maxX;
                 double cy = ((i & 2) == 0) ? bb.minY : bb.maxY;
                 double cz = ((i & 4) == 0) ? bb.minZ : bb.maxZ;
-                float[] p = projectNorm(new Vec3d(cx, cy, cz), camPos, view, proj);
+                float[] p = projectNorm(new Vec3(cx, cy, cz), camPos, viewProj);
                 if (p == null) continue;
                 seen++;
                 if (p[0] < minU) minU = p[0];
@@ -639,7 +691,7 @@ public final class VisionHandlers {
             Hit hit = hits.get(i);
             ObjectNode o = arr.addObject();
             o.put("entityId", hit.e.getId());
-            o.put("type", Registries.ENTITY_TYPE.getId(hit.e.getType()).toString());
+            o.put("type", BuiltInRegistries.ENTITY_TYPE.getKey(hit.e.getType()).toString());
             o.put("name", hit.e.getName().getString());
             o.put("distance", hit.dist);
             ObjectNode screen = o.putObject("screen");
@@ -650,29 +702,29 @@ public final class VisionHandlers {
             screen.put("h", hit.maxV - hit.minV);
             screen.put("normalized", true);
             ObjectNode world = o.putObject("world");
-            Vec3d ep = hit.e.getPos();
+            Vec3 ep = hit.e.position();
             world.put("x", ep.x); world.put("y", ep.y); world.put("z", ep.z);
         }
         return arr;
     }
 
-    private static ArrayNode blockAnnotations(MinecraftClient mc, Vec3d camPos, Matrix4f view,
-                                              Matrix4f proj, int range) {
+    private static ArrayNode blockAnnotations(Minecraft mc, Vec3 camPos, Matrix4f viewProj,
+                                              int range) {
         ArrayNode arr = M.createArrayNode();
-        if (mc.world == null || mc.player == null) return arr;
-        BlockPos origin = mc.player.getBlockPos();
+        if (mc.level == null || mc.player == null) return arr;
+        BlockPos origin = mc.player.blockPosition();
         record Hit(Identifier id, BlockPos pos, float[] screen, double dist) {}
         List<Hit> hits = new ArrayList<>();
         for (int dx = -range; dx <= range; dx++) {
             for (int dy = -range; dy <= range; dy++) {
                 for (int dz = -range; dz <= range; dz++) {
-                    BlockPos bp = origin.add(dx, dy, dz);
-                    var state = mc.world.getBlockState(bp);
+                    BlockPos bp = origin.offset(dx, dy, dz);
+                    var state = mc.level.getBlockState(bp);
                     if (state.isAir()) continue;
-                    Identifier id = Registries.BLOCK.getId(state.getBlock());
+                    Identifier id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
                     if (!INTERACTIVE_BLOCKS.contains(id)) continue;
-                    Vec3d center = new Vec3d(bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5);
-                    float[] s = projectNorm(center, camPos, view, proj);
+                    Vec3 center = new Vec3(bp.getX() + 0.5, bp.getY() + 0.5, bp.getZ() + 0.5);
+                    float[] s = projectNorm(center, camPos, viewProj);
                     if (s == null) continue;
                     double dist = center.distanceTo(camPos);
                     hits.add(new Hit(id, bp, s, dist));
@@ -698,22 +750,22 @@ public final class VisionHandlers {
         return arr;
     }
 
-    private static ObjectNode crosshairAnnotation(MinecraftClient mc) {
+    private static ObjectNode crosshairAnnotation(Minecraft mc) {
         ObjectNode n = M.createObjectNode();
-        HitResult hit = mc.crosshairTarget;
+        HitResult hit = mc.hitResult;
         if (hit == null || hit.getType() == HitResult.Type.MISS) {
             n.put("kind", "miss");
             return n;
         }
-        if (hit instanceof BlockHitResult bhr && bhr.getType() == HitResult.Type.BLOCK && mc.world != null) {
+        if (hit instanceof BlockHitResult bhr && bhr.getType() == HitResult.Type.BLOCK && mc.level != null) {
             n.put("kind", "block");
             BlockPos bp = bhr.getBlockPos();
-            n.put("id", Registries.BLOCK.getId(mc.world.getBlockState(bp).getBlock()).toString());
-            n.put("side", bhr.getSide().asString());
+            n.put("id", BuiltInRegistries.BLOCK.getKey(mc.level.getBlockState(bp).getBlock()).toString());
+            n.put("side", bhr.getDirection().getSerializedName());
             ObjectNode w = n.putObject("world");
             w.put("x", bp.getX()); w.put("y", bp.getY()); w.put("z", bp.getZ());
             ObjectNode hp = n.putObject("hit");
-            Vec3d hv = bhr.getPos();
+            Vec3 hv = bhr.getLocation();
             hp.put("x", hv.x); hp.put("y", hv.y); hp.put("z", hv.z);
             return n;
         }
@@ -721,9 +773,9 @@ public final class VisionHandlers {
             n.put("kind", "entity");
             Entity e = ehr.getEntity();
             n.put("entityId", e.getId());
-            n.put("type", Registries.ENTITY_TYPE.getId(e.getType()).toString());
+            n.put("type", BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).toString());
             ObjectNode w = n.putObject("world");
-            Vec3d ep = e.getPos();
+            Vec3 ep = e.position();
             w.put("x", ep.x); w.put("y", ep.y); w.put("z", ep.z);
             return n;
         }
@@ -757,10 +809,6 @@ public final class VisionHandlers {
     }
 
     // --- Misc ---------------------------------------------------------------
-
-    private static ObjectNode await(CompletableFuture<ObjectNode> fut, long timeoutMs, String onTimeout) throws Exception {
-        return await0(fut, timeoutMs, onTimeout);
-    }
 
     private static <T> T await0(CompletableFuture<T> fut, long timeoutMs, String onTimeout) throws Exception {
         try {

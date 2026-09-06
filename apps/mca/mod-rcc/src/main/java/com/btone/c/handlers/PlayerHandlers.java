@@ -5,10 +5,10 @@ import com.btone.c.rpc.RpcHandler;
 import com.btone.c.rpc.RpcRouter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.registries.BuiltInRegistries;
 
 public final class PlayerHandlers {
     private static final ObjectMapper M = new ObjectMapper();
@@ -36,10 +36,10 @@ public final class PlayerHandlers {
             double vx = params.path("vx").asDouble(0);
             double vy = params.path("vy").asDouble(0);
             double vz = params.path("vz").asDouble(0);
-            var mc = MinecraftClient.getInstance();
+            var mc = Minecraft.getInstance();
             if (mc.player == null) throw new IllegalStateException("no_player");
-            mc.player.setVelocity(vx, vy, vz);
-            mc.player.velocityModified = true;
+            mc.player.setDeltaMovement(vx, vy, vz);
+            mc.player.hurtMarked = true;
             ObjectNode n = M.createObjectNode();
             n.put("set", true);
             return n;
@@ -62,13 +62,13 @@ public final class PlayerHandlers {
             double x = params.get("x").asDouble();
             double y = params.get("y").asDouble();
             double z = params.get("z").asDouble();
-            var mc = MinecraftClient.getInstance();
+            var mc = Minecraft.getInstance();
             if (mc.player == null) throw new IllegalStateException("no_player");
-            mc.player.refreshPositionAndAngles(
+            mc.player.snapTo(
                 x + 0.5, y, z + 0.5,
-                mc.player.getYaw(), mc.player.getPitch()
+                mc.player.getYRot(), mc.player.getXRot()
             );
-            mc.player.setVelocity(0, 0, 0);
+            mc.player.setDeltaMovement(0, 0, 0);
             ObjectNode n = M.createObjectNode();
             n.put("teleported", true);
             n.put("x", mc.player.getX());
@@ -88,24 +88,24 @@ public final class PlayerHandlers {
         return params -> ClientThread.call(TIMEOUT_MS, () -> {
             String key = params.get("key").asText();
             String action = params.path("action").asText("press");
-            var mc = MinecraftClient.getInstance();
+            var mc = Minecraft.getInstance();
             if (mc.options == null) throw new IllegalStateException("no_options");
-            net.minecraft.client.option.KeyBinding kb = switch (key) {
-                case "jump" -> mc.options.jumpKey;
-                case "sneak" -> mc.options.sneakKey;
-                case "sprint" -> mc.options.sprintKey;
-                case "attack" -> mc.options.attackKey;
-                case "use" -> mc.options.useKey;
-                case "forward" -> mc.options.forwardKey;
-                case "back" -> mc.options.backKey;
-                case "left" -> mc.options.leftKey;
-                case "right" -> mc.options.rightKey;
+            net.minecraft.client.KeyMapping kb = switch (key) {
+                case "jump" -> mc.options.keyJump;
+                case "sneak" -> mc.options.keyShift;
+                case "sprint" -> mc.options.keySprint;
+                case "attack" -> mc.options.keyAttack;
+                case "use" -> mc.options.keyUse;
+                case "forward" -> mc.options.keyUp;
+                case "back" -> mc.options.keyDown;
+                case "left" -> mc.options.keyLeft;
+                case "right" -> mc.options.keyRight;
                 default -> throw new IllegalArgumentException("unknown_key:" + key);
             };
-            kb.setPressed("press".equalsIgnoreCase(action));
+            kb.setDown("press".equalsIgnoreCase(action));
             ObjectNode n = M.createObjectNode();
             n.put("key", key);
-            n.put("pressed", kb.isPressed());
+            n.put("pressed", kb.isDown());
             return n;
         });
     }
@@ -116,10 +116,10 @@ public final class PlayerHandlers {
             if (slot < 0 || slot > 8) {
                 throw new IllegalArgumentException("slot must be 0-8, got: " + slot);
             }
-            var mc = MinecraftClient.getInstance();
+            var mc = Minecraft.getInstance();
             var p = mc.player;
             if (p == null) throw new IllegalStateException("no_player");
-            p.getInventory().selectedSlot = slot;
+            p.getInventory().setSelectedSlot(slot);
             ObjectNode n = M.createObjectNode();
             n.put("selectedSlot", slot);
             return n;
@@ -156,21 +156,21 @@ public final class PlayerHandlers {
      */
     private static RpcHandler setRotation() {
         return params -> ClientThread.call(TIMEOUT_MS, () -> {
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             ObjectNode n = M.createObjectNode();
             if (mc.player == null) { n.put("ok", false); n.put("reason", "no_player"); return n; }
-            float yaw = params.has("yaw") ? (float) params.get("yaw").asDouble() : mc.player.getYaw();
-            float pitch = params.has("pitch") ? (float) params.get("pitch").asDouble() : mc.player.getPitch();
-            mc.player.setYaw(yaw);
-            mc.player.setPitch(pitch);
-            mc.player.setHeadYaw(yaw);
-            mc.player.setBodyYaw(yaw);
-            mc.player.prevYaw = yaw;
-            mc.player.prevPitch = pitch;
-            mc.player.prevHeadYaw = yaw;
-            mc.player.prevBodyYaw = yaw;
-            mc.player.headYaw = yaw;
-            mc.player.bodyYaw = yaw;
+            float yaw = params.has("yaw") ? (float) params.get("yaw").asDouble() : mc.player.getYRot();
+            float pitch = params.has("pitch") ? (float) params.get("pitch").asDouble() : mc.player.getXRot();
+            mc.player.setYRot(yaw);
+            mc.player.setXRot(pitch);
+            mc.player.setYHeadRot(yaw);
+            mc.player.setYBodyRot(yaw);
+            mc.player.yRotO = yaw;
+            mc.player.xRotO = pitch;
+            mc.player.yHeadRotO = yaw;
+            mc.player.yBodyRotO = yaw;
+            mc.player.yHeadRot = yaw;
+            mc.player.yBodyRot = yaw;
             n.put("ok", true);
             n.put("yaw", yaw);
             n.put("pitch", pitch);
@@ -206,16 +206,16 @@ public final class PlayerHandlers {
 
     private static RpcHandler respawn() {
         return params -> ClientThread.call(TIMEOUT_MS, () -> {
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             ObjectNode n = M.createObjectNode();
             if (mc.player == null) {
                 n.put("respawned", false);
                 n.put("reason", "no_player");
                 return n;
             }
-            mc.player.requestRespawn();
+            mc.player.respawn();
             // Close the DeathScreen if it's up so subsequent screenshots show the world.
-            if (mc.currentScreen != null) mc.setScreen(null);
+            if (mc.gui.screen() != null) mc.setScreenAndShow(null);
             n.put("respawned", true);
             return n;
         });
@@ -224,9 +224,9 @@ public final class PlayerHandlers {
     private static RpcHandler state() {
         return params -> ClientThread.call(TIMEOUT_MS, () -> {
             ObjectNode n = M.createObjectNode();
-            MinecraftClient mc = MinecraftClient.getInstance();
+            Minecraft mc = Minecraft.getInstance();
             var p = mc.player;
-            if (p == null || mc.world == null) {
+            if (p == null || mc.level == null) {
                 n.put("inWorld", false);
                 return n;
             }
@@ -236,10 +236,10 @@ public final class PlayerHandlers {
             ObjectNode bp = n.putObject("blockPos");
             bp.put("x", p.getBlockX()); bp.put("y", p.getBlockY()); bp.put("z", p.getBlockZ());
             ObjectNode rot = n.putObject("rot");
-            rot.put("yaw", p.getYaw()); rot.put("pitch", p.getPitch());
+            rot.put("yaw", p.getYRot()); rot.put("pitch", p.getXRot());
             n.put("health", p.getHealth());
-            n.put("food", p.getHungerManager().getFoodLevel());
-            n.put("dim", mc.world.getRegistryKey().getValue().toString());
+            n.put("food", p.getFoodData().getFoodLevel());
+            n.put("dim", mc.level.dimension().identifier().toString());
             n.put("name", p.getName().getString());
             return n;
         });
@@ -248,18 +248,18 @@ public final class PlayerHandlers {
     private static RpcHandler inventory() {
         return params -> ClientThread.call(TIMEOUT_MS, () -> {
             ObjectNode n = M.createObjectNode();
-            var p = MinecraftClient.getInstance().player;
+            var p = Minecraft.getInstance().player;
             if (p == null) { n.put("inWorld", false); return n; }
-            PlayerInventory inv = p.getInventory();
+            Inventory inv = p.getInventory();
             n.put("inWorld", true);
-            n.put("hotbarSlot", inv.selectedSlot);
+            n.put("hotbarSlot", inv.getSelectedSlot());
             var arr = n.putArray("main");
-            for (int i = 0; i < inv.size(); i++) {
-                ItemStack s = inv.getStack(i);
+            for (int i = 0; i < inv.getContainerSize(); i++) {
+                ItemStack s = inv.getItem(i);
                 if (s.isEmpty()) continue;
                 ObjectNode o = arr.addObject();
                 o.put("slot", i);
-                o.put("id", Registries.ITEM.getId(s.getItem()).toString());
+                o.put("id", BuiltInRegistries.ITEM.getKey(s.getItem()).toString());
                 o.put("count", s.getCount());
             }
             return n;
@@ -269,16 +269,16 @@ public final class PlayerHandlers {
     private static RpcHandler equipped() {
         return params -> ClientThread.call(TIMEOUT_MS, () -> {
             ObjectNode n = M.createObjectNode();
-            var p = MinecraftClient.getInstance().player;
+            var p = Minecraft.getInstance().player;
             if (p == null) { n.put("inWorld", false); return n; }
-            ItemStack main = p.getMainHandStack();
-            ItemStack off = p.getOffHandStack();
+            ItemStack main = p.getMainHandItem();
+            ItemStack off = p.getOffhandItem();
             ObjectNode mainNode = n.putObject("mainHand");
-            mainNode.put("id", Registries.ITEM.getId(main.getItem()).toString());
+            mainNode.put("id", BuiltInRegistries.ITEM.getKey(main.getItem()).toString());
             mainNode.put("count", main.getCount());
             mainNode.put("empty", main.isEmpty());
             ObjectNode offNode = n.putObject("offHand");
-            offNode.put("id", Registries.ITEM.getId(off.getItem()).toString());
+            offNode.put("id", BuiltInRegistries.ITEM.getKey(off.getItem()).toString());
             offNode.put("count", off.getCount());
             offNode.put("empty", off.isEmpty());
             return n;

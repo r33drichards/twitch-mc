@@ -3,12 +3,12 @@ package com.btone.c.handlers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
@@ -68,7 +68,7 @@ public final class PillarUpTask {
         ClientTickEvents.END_CLIENT_TICK.register(PillarUpTask::onTick);
     }
 
-    private static void onTick(MinecraftClient mc) {
+    private static void onTick(Minecraft mc) {
         // Only run one task at a time — there's only one player to pillar.
         PillarUpTask task = PENDING.peek();
         if (task == null) return;
@@ -88,9 +88,9 @@ public final class PillarUpTask {
     }
 
     /** Returns true when this task should be removed from the queue. */
-    private boolean runOneTick(MinecraftClient mc) {
-        PlayerEntity p = mc.player;
-        if (p == null || mc.world == null) {
+    private boolean runOneTick(Minecraft mc) {
+        Player p = mc.player;
+        if (p == null || mc.level == null) {
             complete(false, "no_world", -1);
             releaseKeys(mc);
             return true;
@@ -117,20 +117,20 @@ public final class PillarUpTask {
             return true;
         }
         // Select that hotbar slot so the place uses the right item.
-        if (p.getInventory().selectedSlot != hotbarSlot) {
-            p.getInventory().selectedSlot = hotbarSlot;
+        if (p.getInventory().getSelectedSlot() != hotbarSlot) {
+            p.getInventory().setSelectedSlot(hotbarSlot);
         }
 
         // Pin pitch to straight down. Vision rotation taught us we also have
         // to stomp lastPitch — the renderer interpolates, and a tween between
         // the saved pitch and 90 means the place targets the wrong block face.
-        p.setPitch(90.0f);
-        p.prevPitch = 90.0f;
+        p.setXRot(90.0f);
+        p.xRotO = 90.0f;
 
         // Hold jump + use keys. Vanilla auto-place does the actual work:
         // each jump apex, MC fires a useItem on the block under the feet.
-        mc.options.jumpKey.setPressed(true);
-        mc.options.useKey.setPressed(true);
+        mc.options.keyJump.setDown(true);
+        mc.options.keyUse.setDown(true);
 
         return false;
     }
@@ -147,23 +147,23 @@ public final class PillarUpTask {
         future.complete(n);
     }
 
-    private static int findBlockInHotbar(PlayerEntity p, String blockId) {
+    private static int findBlockInHotbar(Player p, String blockId) {
         Identifier targetId = Identifier.tryParse(blockId);
         if (targetId == null) return -1;
-        PlayerInventory inv = p.getInventory();
+        Inventory inv = p.getInventory();
         for (int i = 0; i < 9; i++) {
-            ItemStack s = inv.getStack(i);
+            ItemStack s = inv.getItem(i);
             if (s.isEmpty()) continue;
-            Identifier id = Registries.ITEM.getId(s.getItem());
+            Identifier id = BuiltInRegistries.ITEM.getKey(s.getItem());
             if (id.equals(targetId)) return i;
         }
         return -1;
     }
 
-    private static void releaseKeys(MinecraftClient mc) {
+    private static void releaseKeys(Minecraft mc) {
         try {
-            mc.options.jumpKey.setPressed(false);
-            mc.options.useKey.setPressed(false);
+            mc.options.keyJump.setDown(false);
+            mc.options.keyUse.setDown(false);
         } catch (Throwable ignored) {}
     }
 }

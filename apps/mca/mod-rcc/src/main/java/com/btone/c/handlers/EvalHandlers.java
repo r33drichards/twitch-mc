@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.luaj.vm2.Globals;
 import org.luaj.vm2.LuaError;
 import org.luaj.vm2.LuaTable;
@@ -102,7 +102,7 @@ public final class EvalHandlers {
 
     /** Executes on the client thread. */
     private static ObjectNode runScript(String code, long timeoutMs) {
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
 
         // debugGlobals() installs the debug library, which we need for the
         // instruction-count hook that enforces the timeout.
@@ -115,7 +115,7 @@ public final class EvalHandlers {
         // Bind helpers.
         g.set("mc", CoerceJavaToLua.coerce(mc));
         g.set("player", CoerceJavaToLua.coerce(mc.player));
-        g.set("world", CoerceJavaToLua.coerce(mc.world));
+        g.set("world", CoerceJavaToLua.coerce(mc.level));
         g.set("api", CoerceJavaToLua.coerce(new ScriptApi(mc)));
 
         // Timeout enforcement: a count hook throws a LuaError once wall-clock

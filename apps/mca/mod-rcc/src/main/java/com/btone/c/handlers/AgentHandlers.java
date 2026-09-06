@@ -5,7 +5,7 @@ import com.btone.c.events.EventBus;
 import com.btone.c.rpc.RpcRouter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -97,10 +97,10 @@ public final class AgentHandlers {
                 return result;
             }
 
-            var mc = MinecraftClient.getInstance();
+            var mc = Minecraft.getInstance();
             var player = mc.player;
 
-            if (player == null || mc.getNetworkHandler() == null) {
+            if (player == null || mc.getConnection() == null) {
                 ObjectNode result = M.createObjectNode();
                 result.put("sent", false);
                 result.put("error", "player not in world");

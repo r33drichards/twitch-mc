@@ -9,8 +9,8 @@
   "mixins": ["btone-mod-c.mixins.json"],
   "depends": {
     "fabricloader": ">=0.16.0",
-    "minecraft": "~1.20.1",
-    "java": ">=17",
+    "minecraft": "~26.2",
+    "java": ">=25",
     "fabric-api": "*"
   }
 }

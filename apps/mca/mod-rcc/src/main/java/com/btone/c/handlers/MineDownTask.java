@@ -3,11 +3,11 @@ package com.btone.c.handlers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerInteractionManager;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
@@ -19,10 +19,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *
  * Why this exists: {@code world.mine_block} calls {@code attackBlock} which
  * only STARTS a break each call. Vanilla's continuous-break mechanic runs off
- * {@code ClientPlayerInteractionManager.updateBlockBreakingProgress} advanced
+ * {@code MultiPlayerGameMode.updateBlockBreakingProgress} advanced
  * once per client tick. Spamming attackBlock from an HTTP client restarts
  * the break every call and makes zero progress. Setting attackKey.setPressed
- * also fails: MinecraftClient's input loop uses attackKey.wasPressed() for
+ * also fails: Minecraft's input loop uses attackKey.wasPressed() for
  * the initial click, which is event-driven and not triggered by setPressed.
  *
  * This task drives updateBlockBreakingProgress directly from the client-tick
@@ -61,7 +61,7 @@ public final class MineDownTask {
         ClientTickEvents.END_CLIENT_TICK.register(MineDownTask::onTick);
     }
 
-    private static void onTick(MinecraftClient mc) {
+    private static void onTick(Minecraft mc) {
         MineDownTask task = PENDING.peek();
         if (task == null) return;
         boolean done;
@@ -79,10 +79,10 @@ public final class MineDownTask {
         if (done) PENDING.poll();
     }
 
-    private boolean runOneTick(MinecraftClient mc) {
-        PlayerEntity p = mc.player;
-        ClientPlayerInteractionManager im = mc.interactionManager;
-        if (p == null || mc.world == null || im == null) {
+    private boolean runOneTick(Minecraft mc) {
+        Player p = mc.player;
+        MultiPlayerGameMode im = mc.gameMode;
+        if (p == null || mc.level == null || im == null) {
             complete(false, "no_world", -1);
             return true;
         }
@@ -107,8 +107,8 @@ public final class MineDownTask {
 
         // If the block below is already air, the bot is falling — wait for it
         // to land. Don't start a break on nothing.
-        if (mc.world.getBlockState(target).isAir()) {
-            im.cancelBlockBreaking();
+        if (mc.level.getBlockState(target).isAir()) {
+            im.stopDestroyBlock();
             currentPos = null;
             started = false;
             return false;
@@ -118,28 +118,28 @@ public final class MineDownTask {
         // renderer pitch is what raytrace uses, and a tween from the prior
         // yaw/pitch means the first tick after submit can target a sideways
         // block and stall.
-        p.setPitch(90.0f);
-        p.prevPitch = 90.0f;
+        p.setXRot(90.0f);
+        p.xRotO = 90.0f;
 
-        // New target → start a break with attackBlock, then continue each
-        // subsequent tick with updateBlockBreakingProgress. attackBlock
-        // primes the breakingBlock/breakingStage fields that updateBlockBreakingProgress
+        // New target → start a break with startDestroyBlock, then continue each
+        // subsequent tick with continueDestroyBlock. startDestroyBlock
+        // primes the destroyBlockPos/destroyProgress fields that continueDestroyBlock
         // advances; skipping the priming means progress stays at 0.
         if (currentPos == null || !currentPos.equals(target)) {
             currentPos = target;
             started = false;
         }
         if (!started) {
-            im.attackBlock(target, Direction.UP);
+            im.startDestroyBlock(target, Direction.UP);
             started = true;
         } else {
-            im.updateBlockBreakingProgress(target, Direction.UP);
+            im.continueDestroyBlock(target, Direction.UP);
         }
 
         // Check if the block broke this tick. updateBlockBreakingProgress
         // removes the block in-place when progress hits 1.0, so the post-call
         // block state is the authoritative signal.
-        if (mc.world.getBlockState(target).isAir()) {
+        if (mc.level.getBlockState(target).isAir()) {
             blocksBroken++;
             currentPos = null;
             started = false;
@@ -160,9 +160,9 @@ public final class MineDownTask {
         future.complete(n);
     }
 
-    private static void cancelBreak(MinecraftClient mc) {
+    private static void cancelBreak(Minecraft mc) {
         try {
-            if (mc.interactionManager != null) mc.interactionManager.cancelBlockBreaking();
+            if (mc.gameMode != null) mc.gameMode.stopDestroyBlock();
         } catch (Throwable ignored) {}
     }
 }

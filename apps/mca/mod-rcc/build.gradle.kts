@@ -1,12 +1,18 @@
 // ---------------------------------------------------------------------------
-// mca-rcc — pure-Java Fabric client mod, retargeted to MC 1.20.1 for
-// ReconnectedCC. Baritone + Meteor dependencies removed: this build exposes
-// only server-legal, input-synthesis primitives + world reads. The remote
-// agent is the sole navigation brain.
+// mca-rcc — pure-Java Fabric client mod, retargeted to Minecraft 26.2.
+//
+// 26.x uses Mojang official mappings (Yarn + Intermediary were discontinued
+// after 1.21.11), so this build uses the NON-remapping Loom plugin
+// (net.fabricmc.fabric-loom). Consequences vs the old yarn setup:
+//   - mappings come from loom.officialMojangMappings()
+//   - fabric-loader / fabric-api use plain implementation(), not modImplementation()
+//   - the packaged artifact is `jar`, not `remapJar`; include() still works
+//     and its jar-in-jar deps are attached to `jar`.
+// Requires JDK 25 and Gradle 9.4+.
 // ---------------------------------------------------------------------------
 
 plugins {
-    id("fabric-loom") version "1.7.4"
+    id("net.fabricmc.fabric-loom") version "1.17.16"
     java
 }
 
@@ -16,14 +22,16 @@ group = property("maven_group") as String
 
 repositories {
     maven("https://maven.fabricmc.net/")
+    maven("https://libraries.minecraft.net/")
     mavenCentral()
 }
 
 dependencies {
+    // 26.x Minecraft ships unobfuscated (Mojang names + parameter names baked
+    // in), so the non-remapping Loom plugin needs no mappings() declaration.
     minecraft("com.mojang:minecraft:${property("minecraft_version")}")
-    mappings("net.fabricmc:yarn:${property("yarn_mappings")}:v2")
-    modImplementation("net.fabricmc:fabric-loader:${property("loader_version")}")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_version")}")
+    implementation("net.fabricmc:fabric-loader:${property("loader_version")}")
+    implementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_version")}")
 
     // NOTE: no baritone, no meteor-client. Intentionally gone.
 
@@ -42,10 +50,12 @@ dependencies {
     include("org.luaj:luaj-jse:3.0.1")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.3")
+    // Gradle 9 no longer bundles the JUnit Platform launcher — declare it.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-// 1.20.1 runs on Java 17 (RCC uses Temurin 17).
-java { toolchain { languageVersion = JavaLanguageVersion.of(17) } }
+// 26.x runs on Java 25.
+java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
 
 tasks.test { useJUnitPlatform() }
 
@@ -53,7 +63,7 @@ tasks.test { useJUnitPlatform() }
 // OpenRPC spec generation (unchanged): Schema.java is the single source of
 // truth for the JSON-RPC surface. Emits ../proto/mca-rcc-openrpc.json.
 // ---------------------------------------------------------------------------
-val generateOpenRpc by tasks.registering(JavaExec::class) {
+val generateOpenRpc = tasks.register<JavaExec>("generateOpenRpc") {
     description = "Emit ../proto/mca-rcc-openrpc.json from Schema.java."
     group = "build"
     classpath = sourceSets["main"].compileClasspath +

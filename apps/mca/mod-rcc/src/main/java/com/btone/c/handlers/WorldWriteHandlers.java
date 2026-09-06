@@ -5,13 +5,14 @@ import com.btone.c.rpc.RpcHandler;
 import com.btone.c.rpc.RpcRouter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
 
 public final class WorldWriteHandlers {
     private static final ObjectMapper M = new ObjectMapper();
@@ -89,9 +90,9 @@ public final class WorldWriteHandlers {
         };
     }
 
-    private static String describeAction(ActionResult ar) {
-        // ActionResult is a sealed interface in 1.21+, not an enum. Use the
-        // simple class name (Success / Fail / Pass / PassToDefaultBlockAction).
+    private static String describeAction(InteractionResult ar) {
+        // InteractionResult is a sealed interface in 1.21+, not an enum. Use the
+        // simple class name (Success / Fail / Pass / TryEmptyHandInteraction).
         return ar == null ? "Null" : ar.getClass().getSimpleName();
     }
 
@@ -109,12 +110,12 @@ public final class WorldWriteHandlers {
             // Start the break on the client thread.
             Direction[] sideHolder = new Direction[1];
             ClientThread.call(TIMEOUT_MS, () -> {
-                var mc = MinecraftClient.getInstance();
-                if (mc.interactionManager == null || mc.player == null)
+                var mc = Minecraft.getInstance();
+                if (mc.gameMode == null || mc.player == null)
                     throw new IllegalStateException("no_player");
                 sideHolder[0] = chooseSide(pos);
-                aimAt(Vec3d.ofCenter(pos));
-                mc.interactionManager.attackBlock(pos, sideHolder[0]);
+                aimAt(Vec3.atCenterOf(pos));
+                mc.gameMode.startDestroyBlock(pos, sideHolder[0]);
                 return null;
             });
 
@@ -127,13 +128,13 @@ public final class WorldWriteHandlers {
                 }
                 ticks++;
                 Boolean done = ClientThread.call(TIMEOUT_MS, () -> {
-                    var mc = MinecraftClient.getInstance();
-                    if (mc.interactionManager == null) return true;
+                    var mc = Minecraft.getInstance();
+                    if (mc.gameMode == null) return true;
                     // Check if block is already broken
-                    if (mc.world != null && mc.world.getBlockState(pos).isAir()) return true;
+                    if (mc.level != null && mc.level.getBlockState(pos).isAir()) return true;
                     // Continue mining
-                    aimAt(Vec3d.ofCenter(pos));
-                    mc.interactionManager.updateBlockBreakingProgress(pos, sideHolder[0]);
+                    aimAt(Vec3.atCenterOf(pos));
+                    mc.gameMode.continueDestroyBlock(pos, sideHolder[0]);
                     return false;
                 });
                 if (Boolean.TRUE.equals(done)) break;
@@ -142,8 +143,8 @@ public final class WorldWriteHandlers {
             // Check final state
             final int finalTicks = ticks;
             return ClientThread.call(TIMEOUT_MS, () -> {
-                var mc = MinecraftClient.getInstance();
-                boolean broken = mc.world != null && mc.world.getBlockState(pos).isAir();
+                var mc = Minecraft.getInstance();
+                boolean broken = mc.level != null && mc.level.getBlockState(pos).isAir();
                 ObjectNode n = M.createObjectNode();
                 n.put("broken", broken);
                 n.put("ticks", finalTicks);
@@ -162,8 +163,8 @@ public final class WorldWriteHandlers {
             // knows which face to click (e.g. UP face of a basalt floor to
             // place a crafting_table on top). Values: up/down/north/south/east/west.
             String sideStr = params.path("side").asText("");
-            var mc = MinecraftClient.getInstance();
-            if (mc.interactionManager == null || mc.player == null) {
+            var mc = Minecraft.getInstance();
+            if (mc.gameMode == null || mc.player == null) {
                 throw new IllegalStateException("no_player");
             }
             BlockPos pos = new BlockPos(x, y, z);
@@ -171,22 +172,22 @@ public final class WorldWriteHandlers {
             if (!sideStr.isEmpty()) {
                 Direction parsed = null;
                 for (Direction d : Direction.values()) {
-                    if (d.asString().equalsIgnoreCase(sideStr)) { parsed = d; break; }
+                    if (d.getName().equalsIgnoreCase(sideStr)) { parsed = d; break; }
                 }
                 if (parsed == null) throw new IllegalArgumentException("bad_side:" + sideStr);
                 side = parsed;
             } else {
                 side = chooseSide(pos);
             }
-            aimAt(Vec3d.ofCenter(pos));
-            BlockHitResult hit = new BlockHitResult(Vec3d.ofCenter(pos), side, pos, false);
-            ActionResult result = mc.interactionManager.interactBlock(
+            aimAt(Vec3.atCenterOf(pos));
+            BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos), side, pos, false);
+            InteractionResult result = mc.gameMode.useItemOn(
                     mc.player,
-                    "off".equalsIgnoreCase(hand) ? Hand.OFF_HAND : Hand.MAIN_HAND,
+                    "off".equalsIgnoreCase(hand) ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND,
                     hit);
             ObjectNode n = M.createObjectNode();
             n.put("result", describeAction(result));
-            n.put("side", side.asString());
+            n.put("side", side.getName());
             return n;
         });
     }
@@ -194,13 +195,13 @@ public final class WorldWriteHandlers {
     private static RpcHandler useItem() {
         return params -> ClientThread.call(TIMEOUT_MS, () -> {
             String hand = params == null || params.isNull() ? "main" : params.path("hand").asText("main");
-            var mc = MinecraftClient.getInstance();
-            if (mc.interactionManager == null || mc.player == null) {
+            var mc = Minecraft.getInstance();
+            if (mc.gameMode == null || mc.player == null) {
                 throw new IllegalStateException("no_player");
             }
-            ActionResult result = mc.interactionManager.interactItem(
+            InteractionResult result = mc.gameMode.useItem(
                     mc.player,
-                    "off".equalsIgnoreCase(hand) ? Hand.OFF_HAND : Hand.MAIN_HAND);
+                    "off".equalsIgnoreCase(hand) ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND);
             ObjectNode n = M.createObjectNode();
             n.put("result", describeAction(result));
             return n;
@@ -211,17 +212,18 @@ public final class WorldWriteHandlers {
         return params -> ClientThread.call(TIMEOUT_MS, () -> {
             int id = params.get("entityId").asInt();
             String hand = params.path("hand").asText("main");
-            var mc = MinecraftClient.getInstance();
+            var mc = Minecraft.getInstance();
             var p = mc.player;
-            if (p == null || mc.world == null || mc.interactionManager == null) {
+            if (p == null || mc.level == null || mc.gameMode == null) {
                 throw new IllegalStateException("no_player");
             }
-            var e = mc.world.getEntityById(id);
+            var e = mc.level.getEntity(id);
             if (e == null) throw new IllegalArgumentException("no_entity:" + id);
-            ActionResult result = mc.interactionManager.interactEntity(
+            InteractionResult result = mc.gameMode.interact(
                     p,
                     e,
-                    "off".equalsIgnoreCase(hand) ? Hand.OFF_HAND : Hand.MAIN_HAND);
+                    new EntityHitResult(e),
+                    "off".equalsIgnoreCase(hand) ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND);
             ObjectNode n = M.createObjectNode();
             n.put("result", describeAction(result));
             return n;
@@ -229,11 +231,11 @@ public final class WorldWriteHandlers {
     }
 
     private static Direction chooseSide(BlockPos pos) {
-        var p = MinecraftClient.getInstance().player;
+        var p = Minecraft.getInstance().player;
         if (p == null) return Direction.UP;
-        Vec3d eye = p.getCameraPosVec(1.0f);
-        Vec3d center = Vec3d.ofCenter(pos);
-        Vec3d dir = center.subtract(eye);
+        Vec3 eye = p.getEyePosition(1.0f);
+        Vec3 center = Vec3.atCenterOf(pos);
+        Vec3 dir = center.subtract(eye);
         // Pick the dominant axis of the approach vector and return the inverse face.
         double ax = Math.abs(dir.x), ay = Math.abs(dir.y), az = Math.abs(dir.z);
         if (ax > ay && ax > az) return dir.x > 0 ? Direction.WEST : Direction.EAST;
@@ -241,17 +243,17 @@ public final class WorldWriteHandlers {
         return dir.z > 0 ? Direction.NORTH : Direction.SOUTH;
     }
 
-    private static void aimAt(Vec3d target) {
-        var p = MinecraftClient.getInstance().player;
+    private static void aimAt(Vec3 target) {
+        var p = Minecraft.getInstance().player;
         if (p == null) return;
-        Vec3d eye = p.getCameraPosVec(1.0f);
+        Vec3 eye = p.getEyePosition(1.0f);
         double dx = target.x - eye.x;
         double dy = target.y - eye.y;
         double dz = target.z - eye.z;
         double horiz = Math.sqrt(dx * dx + dz * dz);
         float yaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
         float pitch = (float) -Math.toDegrees(Math.atan2(dy, horiz));
-        p.setYaw(yaw);
-        p.setPitch(pitch);
+        p.setYRot(yaw);
+        p.setXRot(pitch);
     }
 }

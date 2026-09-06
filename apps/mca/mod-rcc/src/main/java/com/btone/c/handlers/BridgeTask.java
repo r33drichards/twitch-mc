@@ -3,20 +3,20 @@ package com.btone.c.handlers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Hand;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * direction (+x, -x, +z, -z), walking the bot across as it goes.
  *
  * Why this exists: {@link MovementTasks} BRIDGE_FLAT mode relies on
- * useKey.setPressed(true) to place blocks each tick. The vanilla use
+ * useKey.setDown(true) to place blocks each tick. The vanilla use
  * handler runs a raytrace from the bot's eye, and when the bot is
  * at the edge of its floor block looking east with pitch=70, the ray
  * EXITS above the east face (the floor block is 1m tall, the eye is
@@ -37,7 +37,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *
  * This task bypasses the raycast entirely: it constructs a synthetic
  * {@link BlockHitResult} on the east face of the current floor block
- * and hands it directly to {@link net.minecraft.client.network.ClientPlayerInteractionManager#interactBlock},
+ * and hands it directly to {@link net.minecraft.client.multiplayer.MultiPlayerGameMode#useItemOn},
  * which places the block east-adjacent regardless of camera angle.
  *
  * Stepping is driven by vanilla physics: the task holds
@@ -94,7 +94,7 @@ public final class BridgeTask {
         ClientTickEvents.END_CLIENT_TICK.register(BridgeTask::onTick);
     }
 
-    private static void onTick(MinecraftClient mc) {
+    private static void onTick(Minecraft mc) {
         BridgeTask task = PENDING.peek();
         if (task == null) return;
         boolean done;
@@ -112,9 +112,9 @@ public final class BridgeTask {
         if (done) PENDING.poll();
     }
 
-    private boolean runOneTick(MinecraftClient mc) {
-        ClientPlayerEntity p = mc.player;
-        if (p == null || mc.world == null || mc.interactionManager == null) {
+    private boolean runOneTick(Minecraft mc) {
+        LocalPlayer p = mc.player;
+        if (p == null || mc.level == null || mc.gameMode == null) {
             complete(false, "no_world");
             releaseKeys(mc);
             return true;
@@ -161,10 +161,10 @@ public final class BridgeTask {
         // mechanic real players use to bridge — we just bypass the
         // raycast-target-miss by placing via a synthetic BlockHitResult
         // below.
-        mc.options.sneakKey.setPressed(true);
-        mc.options.forwardKey.setPressed(true);
-        mc.options.useKey.setPressed(false);
-        mc.options.jumpKey.setPressed(false);
+        mc.options.keyShift.setDown(true);
+        mc.options.keyUp.setDown(true);
+        mc.options.keyUse.setDown(false);
+        mc.options.keyJump.setDown(false);
 
         // Block in hotbar? Select it.
         int hotbarSlot = findBlockInHotbar(p, blockId);
@@ -173,8 +173,8 @@ public final class BridgeTask {
             releaseKeys(mc);
             return true;
         }
-        if (p.getInventory().selectedSlot != hotbarSlot) {
-            p.getInventory().selectedSlot = hotbarSlot;
+        if (p.getInventory().getSelectedSlot() != hotbarSlot) {
+            p.getInventory().setSelectedSlot(hotbarSlot);
         }
 
         // Pin yaw/pitch looking in the travel direction, slightly down so
@@ -183,16 +183,16 @@ public final class BridgeTask {
         // read the yaw, and future agent vision/debug looks cleaner when
         // the bot faces the direction it's bridging.
         float yaw = yawForDirection(direction);
-        p.setYaw(yaw);
-        p.setPitch(30.0f);
-        p.setHeadYaw(yaw);
-        p.setBodyYaw(yaw);
-        p.prevYaw = yaw;
-        p.prevHeadYaw = yaw;
-        p.prevBodyYaw = yaw;
-        p.headYaw = yaw;
-        p.bodyYaw = yaw;
-        p.prevPitch = 30.0f;
+        p.setYRot(yaw);
+        p.setXRot(30.0f);
+        p.setYHeadRot(yaw);
+        p.setYBodyRot(yaw);
+        p.yRotO = yaw;
+        p.yHeadRotO = yaw;
+        p.yBodyRotO = yaw;
+        p.yHeadRot = yaw;
+        p.yBodyRot = yaw;
+        p.xRotO = 30.0f;
 
         // Current floor block is at (bx, by-1, bz). Target placement is one
         // step in the travel direction at the same y-1 (so it's level with
@@ -217,7 +217,7 @@ public final class BridgeTask {
         // If the target is already solid (basalt from a prior tick OR natural
         // land), skip placement and step forward. reachedLand check: the
         // target block is solid AND it isn't the block we just placed.
-        BlockState targetState = mc.world.getBlockState(targetPos);
+        BlockState targetState = mc.level.getBlockState(targetPos);
         boolean targetIsSolid = !targetState.isAir()
                 && targetState.getBlock() != Blocks.WATER
                 && targetState.getBlock() != Blocks.LAVA;
@@ -228,7 +228,7 @@ public final class BridgeTask {
             // pressed and let physics step the bot forward. The agent
             // calls world.bridge again if they want to continue past
             // natural land.
-            Identifier tid = Registries.BLOCK.getId(targetState.getBlock());
+            Identifier tid = BuiltInRegistries.BLOCK.getKey(targetState.getBlock());
             Identifier placedId = Identifier.tryParse(blockId);
             boolean isNaturalLand = placedId == null || !tid.equals(placedId);
             if (isNaturalLand && blocksPlaced > 0) {
@@ -242,7 +242,7 @@ public final class BridgeTask {
         }
 
         // Floor block must be solid (something to place AGAINST).
-        BlockState floorState = mc.world.getBlockState(floorPos);
+        BlockState floorState = mc.level.getBlockState(floorPos);
         if (floorState.isAir()) {
             complete(false, "no_floor_to_place_against");
             releaseKeys(mc);
@@ -250,18 +250,18 @@ public final class BridgeTask {
         }
 
         // Synthetic hit on the east (or other-direction) face of the floor
-        // block. Vec3d is a point ON that face for the server's validator.
-        Vec3d hitVec = Vec3d.ofCenter(floorPos).add(
-                face.getOffsetX() * 0.5,
-                face.getOffsetY() * 0.5,
-                face.getOffsetZ() * 0.5);
+        // block. Vec3 is a point ON that face for the server's validator.
+        Vec3 hitVec = Vec3.atCenterOf(floorPos).add(
+                face.getStepX() * 0.5,
+                face.getStepY() * 0.5,
+                face.getStepZ() * 0.5);
         BlockHitResult hit = new BlockHitResult(hitVec, face, floorPos, false);
 
-        mc.interactionManager.interactBlock(p, Hand.MAIN_HAND, hit);
+        mc.gameMode.useItemOn(p, InteractionHand.MAIN_HAND, hit);
 
         // Verify placement landed (server may reject on anticheat or if the
         // slot went empty between tick-start and the interact call).
-        BlockState afterState = mc.world.getBlockState(targetPos);
+        BlockState afterState = mc.level.getBlockState(targetPos);
         if (afterState.isAir()
                 || afterState.getBlock() == Blocks.WATER
                 || afterState.getBlock() == Blocks.LAVA) {
@@ -296,14 +296,14 @@ public final class BridgeTask {
         future.complete(n);
     }
 
-    private static int findBlockInHotbar(PlayerEntity p, String blockId) {
+    private static int findBlockInHotbar(Player p, String blockId) {
         Identifier targetId = Identifier.tryParse(blockId);
         if (targetId == null) return -1;
-        PlayerInventory inv = p.getInventory();
+        Inventory inv = p.getInventory();
         for (int i = 0; i < 9; i++) {
-            ItemStack s = inv.getStack(i);
+            ItemStack s = inv.getItem(i);
             if (s.isEmpty()) continue;
-            Identifier id = Registries.ITEM.getId(s.getItem());
+            Identifier id = BuiltInRegistries.ITEM.getKey(s.getItem());
             if (id.equals(targetId)) return i;
         }
         return -1;
@@ -319,12 +319,12 @@ public final class BridgeTask {
         }
     }
 
-    private static void releaseKeys(MinecraftClient mc) {
+    private static void releaseKeys(Minecraft mc) {
         try {
-            mc.options.sneakKey.setPressed(false);
-            mc.options.forwardKey.setPressed(false);
-            mc.options.useKey.setPressed(false);
-            mc.options.jumpKey.setPressed(false);
+            mc.options.keyShift.setDown(false);
+            mc.options.keyUp.setDown(false);
+            mc.options.keyUse.setDown(false);
+            mc.options.keyJump.setDown(false);
         } catch (Throwable ignored) {}
     }
 }

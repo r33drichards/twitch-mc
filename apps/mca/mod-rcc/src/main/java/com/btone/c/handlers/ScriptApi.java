@@ -1,19 +1,21 @@
 package com.btone.c.handlers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.enchantment.Enchantment;
-import net.minecraft.enchantment.EnchantmentHelper;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,13 +29,13 @@ import java.util.Map;
  * method on a raw Minecraft object via Luaj's reflective luajava bridge (e.g.
  * {@code player:getHealth()}), Luaj looks the method up <em>by the literal
  * name</em> at runtime. In a production (non-dev) Fabric client, Minecraft is
- * running under <b>intermediary</b> names: {@code ClientPlayerEntity.getHealth()}
+ * running under <b>intermediary</b> names: {@code LocalPlayer.getHealth()}
  * only exists as {@code method_6032}. So {@code player:getHealth()} resolves in
  * the Loom dev workspace but throws {@code method_6032 is not a member} against
  * the deployed jar. See the module doc on {@link EvalHandlers}.
  *
  * <p>The fix: every method here is a real Java method <i>compiled into this
- * mod's own jar</i>. Loom remaps the yarn calls inside these bodies
+ * mod's own jar</i>. Loom remaps the mojmap calls inside these bodies
  * ({@code getHealth()} → {@code method_6032}) at build time, so the reference is
  * baked in. The method names on <i>this</i> class ({@code health}, {@code pos},
  * {@code blockAt}, …) are our own identifiers and are <b>never remapped</b> —
@@ -45,13 +47,13 @@ import java.util.Map;
  */
 public final class ScriptApi {
 
-    private final MinecraftClient mc;
+    private final Minecraft mc;
 
-    ScriptApi(MinecraftClient mc) {
+    ScriptApi(Minecraft mc) {
         this.mc = mc;
     }
 
-    private net.minecraft.client.network.ClientPlayerEntity p() {
+    private net.minecraft.client.player.LocalPlayer p() {
         if (mc.player == null) throw new IllegalStateException("no_player");
         return mc.player;
     }
@@ -59,7 +61,7 @@ public final class ScriptApi {
     // ---- reads ----
 
     public boolean inWorld() {
-        return mc.player != null && mc.world != null;
+        return mc.player != null && mc.level != null;
     }
 
     public double health() {
@@ -67,7 +69,7 @@ public final class ScriptApi {
     }
 
     public int food() {
-        return p().getHungerManager().getFoodLevel();
+        return p().getFoodData().getFoodLevel();
     }
 
     public double x() {
@@ -95,15 +97,15 @@ public final class ScriptApi {
     }
 
     public float yaw() {
-        return p().getYaw();
+        return p().getYRot();
     }
 
     public float pitch() {
-        return p().getPitch();
+        return p().getXRot();
     }
 
     public String dim() {
-        return mc.world == null ? null : mc.world.getRegistryKey().getValue().toString();
+        return mc.level == null ? null : mc.level.dimension().identifier().toString();
     }
 
     public String name() {
@@ -111,36 +113,36 @@ public final class ScriptApi {
     }
 
     public int hotbarSlot() {
-        return p().getInventory().selectedSlot;
+        return p().getInventory().getSelectedSlot();
     }
 
     public String heldItem() {
-        return Registries.ITEM.getId(p().getMainHandStack().getItem()).toString();
+        return BuiltInRegistries.ITEM.getKey(p().getMainHandItem().getItem()).toString();
     }
 
     /** Block id at world coords (e.g. "minecraft:stone"), or null if unloaded. */
     public String blockAt(int bx, int by, int bz) {
-        if (mc.world == null) return null;
-        BlockState s = mc.world.getBlockState(new BlockPos(bx, by, bz));
-        return Registries.BLOCK.getId(s.getBlock()).toString();
+        if (mc.level == null) return null;
+        BlockState s = mc.level.getBlockState(new BlockPos(bx, by, bz));
+        return BuiltInRegistries.BLOCK.getKey(s.getBlock()).toString();
     }
 
     // ---- writes / actions ----
 
     public void setYaw(double v) {
         var pl = p();
-        pl.setYaw((float) v);
-        pl.setHeadYaw((float) v);
-        pl.setBodyYaw((float) v);
+        pl.setYRot((float) v);
+        pl.setYHeadRot((float) v);
+        pl.setYBodyRot((float) v);
     }
 
     public void setPitch(double v) {
-        p().setPitch((float) v);
+        p().setXRot((float) v);
     }
 
     public void selectSlot(int i) {
         if (i < 0 || i > 8) throw new IllegalArgumentException("slot must be 0-8, got: " + i);
-        p().getInventory().selectedSlot = i;
+        p().getInventory().setSelectedSlot(i);
     }
 
     /**
@@ -149,10 +151,10 @@ public final class ScriptApi {
      */
     public void chat(String text) {
         mc.execute(() -> {
-            var nh = mc.getNetworkHandler();
+            var nh = mc.getConnection();
             if (nh == null) return;
-            if (text.startsWith("/")) nh.sendChatCommand(text.substring(1));
-            else nh.sendChatMessage(text);
+            if (text.startsWith("/")) nh.sendCommand(text.substring(1));
+            else nh.sendChat(text);
         });
     }
 
@@ -164,13 +166,13 @@ public final class ScriptApi {
      * accepted by the client.
      */
     public boolean useItem() {
-        ActionResult r = mc.interactionManager.interactItem(p(), Hand.MAIN_HAND);
-        return r != null && r.isAccepted();
+        InteractionResult r = mc.gameMode.useItem(p(), InteractionHand.MAIN_HAND);
+        return r != null && r.consumesAction();
     }
 
     /** Swing the main hand (one attack/visual tick). */
     public void swing() {
-        p().swingHand(Hand.MAIN_HAND);
+        p().swing(InteractionHand.MAIN_HAND);
     }
 
     /**
@@ -179,8 +181,8 @@ public final class ScriptApi {
      */
     public boolean attackBlock(int bx, int by, int bz) {
         BlockPos pos = new BlockPos(bx, by, bz);
-        boolean ok = mc.interactionManager.attackBlock(pos, faceToward(pos));
-        p().swingHand(Hand.MAIN_HAND);
+        boolean ok = mc.gameMode.startDestroyBlock(pos, faceToward(pos));
+        p().swing(InteractionHand.MAIN_HAND);
         return ok;
     }
 
@@ -192,14 +194,62 @@ public final class ScriptApi {
     public boolean placeBlock(int bx, int by, int bz, String side) {
         BlockPos pos = new BlockPos(bx, by, bz);
         Direction dir = parseSide(side, pos);
-        BlockHitResult hit = new BlockHitResult(Vec3d.ofCenter(pos), dir, pos, false);
-        ActionResult r = mc.interactionManager.interactBlock(p(), Hand.MAIN_HAND, hit);
-        return r != null && r.isAccepted();
+        BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(pos), dir, pos, false);
+        InteractionResult r = mc.gameMode.useItemOn(p(), InteractionHand.MAIN_HAND, hit);
+        return r != null && r.consumesAction();
     }
 
     /** True while a fishing bobber is deployed (the line is cast). */
     public boolean bobberOut() {
-        return p().fishHook != null;
+        return p().fishing != null;
+    }
+
+    // ---- entity detection + combat (targeted KillAura support) ----
+
+    /**
+     * Nearby loaded entities within {@code radius} blocks, nearest-first, as a JSON array string:
+     * [{"id":int,"type":"minecraft:zombie","hostile":bool,"living":bool,"x":d,"y":d,"z":d,"dist":d,"health":d}].
+     * {@code hostile} = implements the Enemy marker (monsters). Use with attackEntity(id) for a targeted KillAura.
+     */
+    public String entitiesJson(double radius) {
+        if (mc.level == null) return "[]";
+        var self = p();
+        Vec3 me = self.position();
+        double r2 = radius * radius;
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (net.minecraft.world.entity.Entity e : mc.level.entitiesForRendering()) {
+            if (e == self) continue;
+            double d2 = e.distanceToSqr(me);
+            if (d2 > r2) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", e.getId());
+            m.put("type", BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).toString());
+            m.put("hostile", e instanceof net.minecraft.world.entity.monster.Enemy);
+            boolean living = e instanceof net.minecraft.world.entity.LivingEntity;
+            m.put("living", living);
+            m.put("x", e.getX());
+            m.put("y", e.getY());
+            m.put("z", e.getZ());
+            m.put("dist", Math.sqrt(d2));
+            if (living) m.put("health", ((net.minecraft.world.entity.LivingEntity) e).getHealth());
+            out.add(m);
+        }
+        out.sort((a, b) -> Double.compare((double) a.get("dist"), (double) b.get("dist")));
+        try { return ITEM_JSON.writeValueAsString(out); } catch (Exception ex) { return "[]"; }
+    }
+
+    /**
+     * Attack (melee) the entity with the given network id (from entitiesJson). Faces nothing —
+     * pair with setYaw/setPitch aimed at the entity for reliable hits, or just call directly since
+     * the client attack uses the server-side entity id. Returns true if the entity was found.
+     */
+    public boolean attackEntity(int entityId) {
+        if (mc.level == null) return false;
+        net.minecraft.world.entity.Entity e = mc.level.getEntity(entityId);
+        if (e == null) return false;
+        mc.gameMode.attack(p(), e);
+        p().swing(InteractionHand.MAIN_HAND);
+        return true;
     }
 
     // ---- rich item reads (enchants / durability / custom name) ----
@@ -211,19 +261,26 @@ public final class ScriptApi {
     private Map<String, Object> stackMap(ItemStack st, int slot) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("slot", slot);
-        m.put("id", Registries.ITEM.getId(st.getItem()).toString());
+        m.put("id", BuiltInRegistries.ITEM.getKey(st.getItem()).toString());
         m.put("count", st.getCount());
-        if (st.isDamageable()) {
-            m.put("durability", st.getMaxDamage() - st.getDamage());
+        if (st.isDamageableItem()) {
+            m.put("durability", st.getMaxDamage() - st.getDamageValue());
             m.put("maxDurability", st.getMaxDamage());
         }
-        if (st.hasCustomName()) m.put("customName", st.getName().getString());
-        Map<Enchantment, Integer> ench = EnchantmentHelper.get(st);
+        if (st.getCustomName() != null) m.put("customName", st.getHoverName().getString());
+        // Enchantments are data-driven (1.21+): read the ItemEnchantments
+        // component and resolve each enchant Holder's registry id. Enchantments
+        // live in a dynamic registry, so the id comes from the Holder's
+        // ResourceKey rather than a static BuiltInRegistries lookup.
+        ItemEnchantments ench = st.getEnchantments();
         if (!ench.isEmpty()) {
             Map<String, Integer> e = new LinkedHashMap<>();
-            for (Map.Entry<Enchantment, Integer> en : ench.entrySet()) {
-                var id = Registries.ENCHANTMENT.getId(en.getKey());
-                e.put(id != null ? id.toString() : en.getKey().toString(), en.getValue());
+            for (Object2IntMap.Entry<Holder<Enchantment>> en : ench.entrySet()) {
+                Holder<Enchantment> holder = en.getKey();
+                String id = holder.unwrapKey()
+                        .map(k -> k.identifier().toString())
+                        .orElseGet(() -> holder.value().toString());
+                e.put(id, en.getIntValue());
             }
             m.put("enchants", e);
         }
@@ -233,7 +290,7 @@ public final class ScriptApi {
     /** Player main inventory (slots 0-35), non-empty stacks with full detail, as a JSON array string. */
     public String inventoryJson() {
         List<Map<String, Object>> out = new ArrayList<>();
-        var main = p().getInventory().main;
+        var main = p().getInventory().getNonEquipmentItems();
         for (int i = 0; i < main.size(); i++) {
             ItemStack st = main.get(i);
             if (!st.isEmpty()) out.add(stackMap(st, i));
@@ -243,20 +300,20 @@ public final class ScriptApi {
 
     /** Currently-open container's own slots (not player inventory), with full detail, as a JSON array string. */
     public String containerJson() {
-        if (!(mc.currentScreen instanceof HandledScreen<?> hs)) return "[]";
-        var handler = hs.getScreenHandler();
+        if (!(mc.gui.screen() instanceof AbstractContainerScreen<?> hs)) return "[]";
+        var handler = hs.getMenu();
         int playerInvStart = handler.slots.size() - 36;
         List<Map<String, Object>> out = new ArrayList<>();
         for (int i = 0; i < playerInvStart; i++) {
-            ItemStack st = handler.slots.get(i).getStack();
+            ItemStack st = handler.slots.get(i).getItem();
             if (!st.isEmpty()) out.add(stackMap(st, i));
         }
         try { return ITEM_JSON.writeValueAsString(out); } catch (Exception e) { return "[]"; }
     }
 
     private Direction faceToward(BlockPos pos) {
-        Vec3d eye = p().getEyePos();
-        Vec3d c = Vec3d.ofCenter(pos);
+        Vec3 eye = p().getEyePosition();
+        Vec3 c = Vec3.atCenterOf(pos);
         double dx = c.x - eye.x, dy = c.y - eye.y, dz = c.z - eye.z;
         double ax = Math.abs(dx), ay = Math.abs(dy), az = Math.abs(dz);
         if (ax > ay && ax > az) return dx > 0 ? Direction.WEST : Direction.EAST;

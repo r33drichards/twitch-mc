@@ -4,7 +4,7 @@ import com.btone.c.ClientThread;
 import com.btone.c.rpc.RpcRouter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -28,11 +28,11 @@ public final class ChatHandlers {
             // Fire-and-forget. sendChatMessage in offline mode triggers chat-signing
             // which can block for seconds; submit().get() would time us out.
             String text = params.get("text").asText();
-            MinecraftClient.getInstance().execute(() -> {
-                var nh = MinecraftClient.getInstance().getNetworkHandler();
+            Minecraft.getInstance().execute(() -> {
+                var nh = Minecraft.getInstance().getConnection();
                 if (nh == null) return;
-                if (text.startsWith("/")) nh.sendChatCommand(text.substring(1));
-                else nh.sendChatMessage(text);
+                if (text.startsWith("/")) nh.sendCommand(text.substring(1));
+                else nh.sendChat(text);
             });
             ObjectNode n = M.createObjectNode();
             n.put("queued", true);

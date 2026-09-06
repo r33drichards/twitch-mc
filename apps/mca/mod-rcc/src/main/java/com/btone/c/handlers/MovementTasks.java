@@ -3,12 +3,12 @@ package com.btone.c.handlers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
@@ -75,7 +75,7 @@ public final class MovementTasks {
         ClientTickEvents.END_CLIENT_TICK.register(MovementTasks::onTick);
     }
 
-    private static void onTick(MinecraftClient mc) {
+    private static void onTick(Minecraft mc) {
         MovementTasks task = PENDING.peek();
         if (task == null) return;
         boolean done;
@@ -93,9 +93,9 @@ public final class MovementTasks {
         if (done) PENDING.poll();
     }
 
-    private boolean runOneTick(MinecraftClient mc) {
-        PlayerEntity p = mc.player;
-        if (p == null || mc.world == null) {
+    private boolean runOneTick(Minecraft mc) {
+        Player p = mc.player;
+        if (p == null || mc.level == null) {
             complete(false, "no_world", -1);
             releaseAllKeys(mc);
             return true;
@@ -127,8 +127,8 @@ public final class MovementTasks {
             releaseAllKeys(mc);
             return true;
         }
-        if (p.getInventory().selectedSlot != hotbarSlot) {
-            p.getInventory().selectedSlot = hotbarSlot;
+        if (p.getInventory().getSelectedSlot() != hotbarSlot) {
+            p.getInventory().setSelectedSlot(hotbarSlot);
         }
 
         // Set yaw to face the travel direction. Without this the forward
@@ -138,32 +138,32 @@ public final class MovementTasks {
         // Pitch: look down + slightly forward. Bridge wants the use-target
         // to be the front edge of the block under feet — pitch=70 hits that.
         float pitch = 70.0f;
-        p.setYaw(yaw);
-        p.setPitch(pitch);
-        p.setHeadYaw(yaw);
-        p.setBodyYaw(yaw);
-        p.prevYaw = yaw;
-        p.prevPitch = pitch;
-        p.prevHeadYaw = yaw;
-        p.prevBodyYaw = yaw;
-        p.headYaw = yaw;
-        p.bodyYaw = yaw;
+        p.setYRot(yaw);
+        p.setXRot(pitch);
+        p.setYHeadRot(yaw);
+        p.setYBodyRot(yaw);
+        p.yRotO = yaw;
+        p.xRotO = pitch;
+        p.yHeadRotO = yaw;
+        p.yBodyRotO = yaw;
+        p.yHeadRot = yaw;
+        p.yBodyRot = yaw;
 
         // Hold keys per mode
-        mc.options.forwardKey.setPressed(true);
-        mc.options.useKey.setPressed(true);
+        mc.options.keyUp.setDown(true);
+        mc.options.keyUse.setDown(true);
         if (mode == Mode.BRIDGE_FLAT) {
-            mc.options.sneakKey.setPressed(true);
-            mc.options.jumpKey.setPressed(false);
+            mc.options.keyShift.setDown(true);
+            mc.options.keyJump.setDown(false);
         } else { // STAIRS_UP
-            mc.options.sneakKey.setPressed(false);
-            mc.options.jumpKey.setPressed(true);
+            mc.options.keyShift.setDown(false);
+            mc.options.keyJump.setDown(true);
         }
 
         return false;
     }
 
-    private double directionalDistance(PlayerEntity p) {
+    private double directionalDistance(Player p) {
         switch (direction) {
             case "+x": return Math.max(0, p.getX() - startX);
             case "-x": return Math.max(0, startX - p.getX());
@@ -197,25 +197,25 @@ public final class MovementTasks {
         future.complete(n);
     }
 
-    private static int findBlockInHotbar(PlayerEntity p, String blockId) {
+    private static int findBlockInHotbar(Player p, String blockId) {
         Identifier targetId = Identifier.tryParse(blockId);
         if (targetId == null) return -1;
-        PlayerInventory inv = p.getInventory();
+        Inventory inv = p.getInventory();
         for (int i = 0; i < 9; i++) {
-            ItemStack s = inv.getStack(i);
+            ItemStack s = inv.getItem(i);
             if (s.isEmpty()) continue;
-            Identifier id = Registries.ITEM.getId(s.getItem());
+            Identifier id = BuiltInRegistries.ITEM.getKey(s.getItem());
             if (id.equals(targetId)) return i;
         }
         return -1;
     }
 
-    private static void releaseAllKeys(MinecraftClient mc) {
+    private static void releaseAllKeys(Minecraft mc) {
         try {
-            mc.options.forwardKey.setPressed(false);
-            mc.options.useKey.setPressed(false);
-            mc.options.sneakKey.setPressed(false);
-            mc.options.jumpKey.setPressed(false);
+            mc.options.keyUp.setDown(false);
+            mc.options.keyUse.setDown(false);
+            mc.options.keyShift.setDown(false);
+            mc.options.keyJump.setDown(false);
         } catch (Throwable ignored) {}
     }
 }
