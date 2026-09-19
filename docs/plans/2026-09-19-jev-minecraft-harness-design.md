@@ -4,7 +4,7 @@
 **Branch:** `mca-26.2`
 **Status:** design agreed, not yet implemented
 
-An external harness drives a real Minecraft client through the `mca-rcc` bridge.
+An external harness drives a real Minecraft 26.3 client through the `mca-rcc` bridge.
 TypeSafe's Jev makes every in-world decision; the harness senses, serves state,
 and executes. The bot takes its orders from Minecraft chat and reacts
 continuously underneath them.
@@ -17,7 +17,7 @@ continuously underneath them.
 |---|---|
 | What the bot does | Follows chat instructions as standing orders, reacting continuously |
 | Primitive granularity | Mid-level verbs; Jev picks the verb and the target, code resolves coordinates |
-| Target world | 26.2 singleplayer, `mca-rcc (26.2)` profile, `mca-rcc26` gamedir |
+| Target world | Minecraft 26.3, `mca-rcc (26.3)` profile, `mca-rcc26` gamedir |
 | Who decides | **Jev decides everything.** Code never arbitrates, gates, or overrides |
 | State extensibility | Dynamic Lua probes, hot-reloaded, no rebuild |
 | Location | `apps/mca/agents/jev-harness/`, committed beside the mod |
@@ -30,7 +30,7 @@ is gone.
 
 ## 2. What the bridge already provides
 
-`mca-rcc` on 26.2 exposes a loopback JSON-RPC surface plus an SSE stream.
+`mca-rcc` on 26.3 exposes a loopback JSON-RPC surface plus an SSE stream.
 
 **Pull:** `player.state`, `player.inventory`, `player.equipped`, `world.block_at`,
 `world.blocks_around{radius}`, `world.raycast{max}`, `container.state`, `chat.recent`.

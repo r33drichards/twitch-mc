@@ -39,7 +39,10 @@ public final class PlayerHandlers {
             var mc = Minecraft.getInstance();
             if (mc.player == null) throw new IllegalStateException("no_player");
             mc.player.setDeltaMovement(vx, vy, vz);
-            mc.player.hurtMarked = true;
+            // 26.3 split Entity.hurtMarked into needsSync / syncPosition /
+            // syncVelocity. A velocity push needs the velocity half.
+            mc.player.syncVelocity = true;
+            mc.player.needsSync = true;
             ObjectNode n = M.createObjectNode();
             n.put("set", true);
             return n;

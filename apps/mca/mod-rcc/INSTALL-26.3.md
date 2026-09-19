@@ -1,11 +1,11 @@
-# mca-rcc on Minecraft 26.2 — install & configure
+# mca-rcc on Minecraft 26.3 — install & configure
 
 `mca-rcc` is a **pure-Java Fabric _client_ mod** that exposes the local
 Minecraft client over a loopback JSON-RPC + SSE HTTP bridge, so an external
 agent can read the world and drive the player. No Baritone, no Meteor — only
 server-legal input-synthesis primitives and world reads.
 
-This document covers the **26.2** target. The port from the old 1.20.1 build is
+This document covers the **26.3** target. The port from the old 1.20.1 build is
 non-trivial because Minecraft 26.x changed the entire mappings/toolchain story.
 
 ---
@@ -17,15 +17,15 @@ game ships **unobfuscated** (Mojang official names + parameter names baked in),
 so the mod builds against **Mojang official mappings** using the
 **non-remapping** Loom plugin:
 
-| Thing            | 1.20.1 (old)                          | 26.2 (this build)                         |
+| Thing            | 1.20.1 (old)                          | 26.3 (this build)                         |
 |------------------|---------------------------------------|-------------------------------------------|
 | Loom plugin      | `fabric-loom` 1.7.4                    | `net.fabricmc.fabric-loom` **1.17.16**    |
 | Mappings         | `mappings("net.fabricmc:yarn:…:v2")`  | none — Mojang names are already in the jar |
 | Loader/API deps  | `modImplementation(...)`              | plain `implementation(...)`               |
 | Packaged artifact| `remapJar`                            | `jar` (include/JiJ still attaches to it)  |
-| Minecraft        | `1.20.1`                              | `26.2`                                    |
-| Fabric API       | `0.92.9+1.20.1`                       | `0.155.2+26.2`                            |
-| Fabric loader    | `0.19.2`                              | `0.19.3`                                  |
+| Minecraft        | `1.20.1`                              | `26.3`                                    |
+| Fabric API       | `0.92.9+1.20.1`                       | `0.161.0+26.3`                            |
+| Fabric loader    | `0.19.2`                              | `0.19.5`                                  |
 | JDK              | 17                                    | **25**                                    |
 | Gradle           | 8.10.2                                | **9.6.1**                                 |
 
@@ -39,9 +39,9 @@ Two Gradle-9 gotchas already handled in `build.gradle.kts`:
 ## Prerequisites
 
 - **JDK 25** (Temurin 25). With Nix: `nix shell nixpkgs#temurin-bin-25`.
-- A Minecraft **26.2** client with **Fabric Loader ≥ 0.16.0** installed.
-- **Fabric API `0.155.2+26.2`** dropped in the same `mods/` folder.
-- Internet access on first build (Loom downloads the 26.2 client + libraries).
+- A Minecraft **26.3** client with **Fabric Loader ≥ 0.16.0** installed.
+- **Fabric API `0.161.0+26.3`** dropped in the same `mods/` folder.
+- Internet access on first build (Loom downloads the 26.3 client + libraries).
 
 ---
 
@@ -66,13 +66,13 @@ Output: `build/libs/mca-rcc-0.1.0.jar`.
 
 ## Install
 
-Copy the jar (plus Fabric API) into a Fabric 26.2 profile's `mods/`:
+Copy the jar (plus Fabric API) into a Fabric 26.3 profile's `mods/`:
 
 ```bash
 PROFILE="$HOME/Library/Application Support/minecraft/mca-rcc26"   # your fabric profile
 cp build/libs/mca-rcc-0.1.0.jar "$PROFILE/mods/"
 # and, once:
-cp /path/to/fabric-api-0.155.2+26.2.jar "$PROFILE/mods/"
+cp /path/to/fabric-api-0.161.0+26.3.jar "$PROFILE/mods/"
 ```
 
 The mod is a **client mod** — it loads on the client only. Changes take effect
@@ -148,7 +148,7 @@ which is what the mangrove harvester's survival layer does.
 
 ## Troubleshooting
 
-- **`Could not resolve com.mojang:minecraft:26.2`** — you're offline on a cold
+- **`Could not resolve com.mojang:minecraft:26.3`** — you're offline on a cold
   cache, or missing the `libraries.minecraft.net` repo. Build once with network.
 - **JUnit "no TestEngine" / launcher errors** — ensure
   `testRuntimeOnly("org.junit.platform:junit-platform-launcher")` is present
@@ -157,7 +157,29 @@ which is what the mangrove harvester's survival layer does.
   `nix shell nixpkgs#temurin-bin-25` is the supported path.
 - **Mod loads but `/health` refuses** — the bridge binds only after the client
   reaches the main menu / world; confirm the client is actually running this jar
-  (check `logs/latest.log` for `btone-mod-c` lines) and that it's a **26.2**
+  (check `logs/latest.log` for `btone-mod-c` lines) and that it's a **26.3**
   profile, not 1.20.1.
 - **Edited the jar but nothing changed** — you must **relaunch the client**; the
   bridge is initialized once at startup.
+
+---
+
+## What broke going 26.2 → 26.3
+
+Two vanilla signatures changed. Both fail at compile time, so neither can reach
+a running client, but both are easy to mis-fix by guessing:
+
+| 26.2 | 26.3 | Why |
+|---|---|---|
+| `LivingEntity.swing(InteractionHand)` | `swing(InteractionHand, SwingAnimation, boolean)` | Swings carry an animation component now: `SwingAnimation.DEFAULT` reproduces the old behaviour, and the new `SwingAnimationType` enum is `NONE` / `WHACK` / `STAB` |
+| `Entity.hurtMarked` | `needsSync` / `syncPosition` / `syncVelocity` | One flag split into three. A velocity push wants `syncVelocity`; this build sets `needsSync` too, which still needs confirming against a live server |
+
+Resolve questions like these against the jar rather than from memory. Loom leaves
+the mapped client at
+`~/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged-deobf/26.3/`,
+so `javap` answers directly:
+
+```bash
+nix shell nixpkgs#temurin-bin-25 --command \
+  javap -cp <that jar> net.minecraft.world.entity.LivingEntity | grep -i swing
+```

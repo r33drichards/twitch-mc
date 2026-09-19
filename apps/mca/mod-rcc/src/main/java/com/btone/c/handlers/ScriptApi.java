@@ -12,6 +12,7 @@ import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -172,7 +173,7 @@ public final class ScriptApi {
 
     /** Swing the main hand (one attack/visual tick). */
     public void swing() {
-        p().swing(InteractionHand.MAIN_HAND);
+        p().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
     }
 
     /**
@@ -182,7 +183,7 @@ public final class ScriptApi {
     public boolean attackBlock(int bx, int by, int bz) {
         BlockPos pos = new BlockPos(bx, by, bz);
         boolean ok = mc.gameMode.startDestroyBlock(pos, faceToward(pos));
-        p().swing(InteractionHand.MAIN_HAND);
+        p().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
         return ok;
     }
 
@@ -266,7 +267,7 @@ public final class ScriptApi {
         net.minecraft.world.entity.Entity e = mc.level.getEntity(entityId);
         if (e == null) return false;
         mc.gameMode.attack(p(), e);
-        p().swing(InteractionHand.MAIN_HAND);
+        p().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
         return true;
     }
 
