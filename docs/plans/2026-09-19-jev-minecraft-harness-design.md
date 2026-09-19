@@ -144,9 +144,10 @@ history the client does not.
 `entitiesJson` iterates `entitiesForRendering()`, so it sees only what the client
 tracks. That limit is why `seen_recently` exists.
 
-Field-of-view alone cannot distinguish visible from behind-a-wall. Adding
-`api:canSee(entityId)` to `ScriptApi` would make `in_frame` truthful. Recommended,
-not yet written.
+Field-of-view alone cannot distinguish visible from behind-a-wall, so
+`api:canSee(entityId)` raycasts from the player's eyes to a given entity id.
+Each call raycasts, so probes ask about the few entities that matter rather
+than everything in range.
 
 ### 5.3 Natural-language descriptions
 
@@ -331,7 +332,9 @@ apps/mca/agents/jev-harness/
 
 ## 12. Open items
 
-1. Add `api:canSee(entityId)` to `ScriptApi` so `in_frame` reflects occlusion.
-2. Unit-test the bearing function before writing anything that consumes it.
-3. Decide the trace retention policy; `drive.log` reached 37MB on the last harness.
-4. `mca-26.2` has no open pull request.
+1. Decide the trace retention policy; `drive.log` reached 37MB on the last harness.
+2. `mca-26.2` has no open pull request.
+
+Closed on 2026-09-19: `api:canSee(entityId)` is in `ScriptApi` and built into the
+deployed jar, and `geometry.py` ships with 27 passing tests pinning the yaw
+convention.
