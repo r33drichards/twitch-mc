@@ -239,6 +239,24 @@ public final class ScriptApi {
     }
 
     /**
+     * True when nothing solid stands between the player's eyes and the entity
+     * with this network id (the {@code id} field {@link #entitiesJson} reports).
+     *
+     * <p>Field of view alone cannot tell a visible entity from one behind a
+     * wall, so pair this with the bearing cone to decide what is genuinely on
+     * screen. Each call raycasts, so ask about the few entities that matter
+     * rather than every entity in range.
+     *
+     * @return false when the entity is gone, unloaded, or out of sight
+     */
+    public boolean canSee(int entityId) {
+        if (mc.level == null) return false;
+        net.minecraft.world.entity.Entity e = mc.level.getEntity(entityId);
+        if (e == null) return false;
+        return p().hasLineOfSight(e);
+    }
+
+    /**
      * Attack (melee) the entity with the given network id (from entitiesJson). Faces nothing —
      * pair with setYaw/setPitch aimed at the entity for reliable hits, or just call directly since
      * the client attack uses the server-side entity id. Returns true if the entity was found.
