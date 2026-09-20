@@ -85,6 +85,8 @@ CONTAINER = {
 class FakeBridge:
     """Answers the probe script and canSee() without a client."""
 
+    recipes = []
+
     def __init__(self, raw=None, can_see=True, blocks=None, container=None,
                  rpc_fails=None):
         self.raw = RAW if raw is None else raw
@@ -110,6 +112,8 @@ class FakeBridge:
             return {"blocks": self.blocks}
         if method == "container.state":
             return self.container
+        if method == "craft.recipes":
+            return {"recipes": self.recipes}
         raise AssertionError(f"unexpected rpc {method}")
 
 
@@ -144,7 +148,7 @@ class TestShape(unittest.TestCase):
 
     def test_top_level_keys_are_fixed(self):
         s = state.build_state(FakeBridge())
-        self.assertEqual(set(s), {"self", "hazards", "in_frame", "out_of_frame",
+        self.assertEqual(set(s), {"self", "hazards", "in_frame", "out_of_frame", "craftable",
                                   "inventory", "stations", "container",
                                   "order", "errors", "captured_at"})
 
@@ -185,7 +189,7 @@ class TestShape(unittest.TestCase):
 
     def test_errors_are_null_when_probes_are_healthy(self):
         s = state.build_state(FakeBridge())
-        self.assertEqual(s["errors"], {"self": None, "hazards": None,
+        self.assertEqual(s["errors"], {"self": None, "hazards": None, "craftable": None,
                                        "entities": None, "inventory": None,
                                        "stations": None, "container": None})
 
@@ -742,3 +746,48 @@ class TestHostilityBits(unittest.TestCase):
 class TestNewProbes(unittest.TestCase):
     def test_inventory_is_a_probe_not_python(self):
         self.assertIn("probe('inventory'", state.compose_probes())
+
+
+class TestCraftable(unittest.TestCase):
+    """What the recipe book says can be made right now.
+
+    Without this, `craft` has nothing to name: target_item can only offer items
+    already carried, so "craft nuggets into ingots" is unreachable.
+    """
+
+    class RecipeBridge(FakeBridge):
+        def __init__(self, recipes=None, fail=False):
+            super().__init__()
+            self._recipes = recipes if recipes is not None else [
+                {"result": "minecraft:gold_ingot", "count": 1, "craftable": True},
+                {"result": "minecraft:gold_ingot", "count": 9, "craftable": True},
+                {"result": "minecraft:gold_block", "count": 1, "craftable": True},
+            ]
+            self._fail = fail
+
+        def rpc(self, method, params=None, timeout=10.0):
+            if method == "craft.recipes":
+                if self._fail:
+                    raise RuntimeError("no such method")
+                return {"recipes": list(self._recipes)}
+            return super().rpc(method, params, timeout)
+
+    def test_craftable_results_reach_the_state(self):
+        st = state.build_state(self.RecipeBridge())
+        results = [r["result"] for r in st["craftable"]]
+        self.assertIn("minecraft:gold_block", results)
+
+    def test_each_result_appears_once(self):
+        st = state.build_state(self.RecipeBridge())
+        results = [r["result"] for r in st["craftable"]]
+        self.assertEqual(len(results), len(set(results)))
+
+    def test_each_entry_carries_a_phrase(self):
+        st = state.build_state(self.RecipeBridge())
+        self.assertTrue(all(r.get("desc") for r in st["craftable"]))
+
+    def test_a_bridge_without_the_method_degrades_to_empty(self):
+        # An older jar has no craft.recipes; the tick must still happen.
+        st = state.build_state(self.RecipeBridge(fail=True))
+        self.assertEqual(st["craftable"], [])
+        self.assertIsNotNone(st["errors"]["craftable"])

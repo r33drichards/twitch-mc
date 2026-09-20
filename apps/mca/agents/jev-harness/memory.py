@@ -78,12 +78,13 @@ class DecisionLog:
         self._max = max_entries
         self._entries = []
 
-    def record(self, verb, target, gap_ms, outcome):
+    def record(self, verb, target, gap_ms, outcome, result=None):
         self._entries.append({
             "verb": verb,
             "target": target,
             "gap_ms": gap_ms,
             "outcome": outcome or {},
+            "result": result,
             "at": self._clock(),
         })
         self._entries = self._entries[-self._max:]
@@ -109,7 +110,13 @@ class DecisionLog:
         for r in rows:
             moved = r["outcome"].get("moved_m")
             moved_s = f", moved {moved:.1f}m" if isinstance(moved, (int, float)) else ""
-            parts.append(f"{r['verb']} {r['age_s']}s ago{moved_s}")
+            result = r.get("result") or {}
+            # A verb that failed says so, with the reason the dispatcher gave.
+            if result.get("ok") is False:
+                reason = result.get("error") or "no reason given"
+                parts.append(f"{r['verb']} {r['age_s']}s ago FAILED: {reason}")
+            else:
+                parts.append(f"{r['verb']} {r['age_s']}s ago{moved_s}")
         return "; ".join(parts)
 
 

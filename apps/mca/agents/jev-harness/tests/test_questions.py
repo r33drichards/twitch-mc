@@ -142,8 +142,13 @@ class TestSpeculativeTargetQuestions(unittest.TestCase):
         self.assertIn("creature", q["target_entity"]["instructions"])
         self.assertIn("open", q["target_place"]["instructions"])
         self.assertIn("craft", q["target_item"]["instructions"])
-        for name in ("target_entity", "target_place", "target_item"):
-            text = q[name]["instructions"]
+        with_container = dict(self.STATE)
+        with_container["container"] = {"screen": "chest", "desc": "chest open",
+                                       "slots": [{"slot": 2, "id": "minecraft:snowball",
+                                                  "count": 16}]}
+        full = build_questions(with_container)
+        for name in ("target_entity", "target_place", "target_item", "target_slot"):
+            text = full[name]["instructions"]
             self.assertNotIn("If the action is", text)
             self.assertIn("order", text)
 
@@ -171,3 +176,19 @@ class TestSpeculativeTargetQuestions(unittest.TestCase):
             "desc": "furnace open",
         }
         self.assertIn("target_slot", build_questions(with_container))
+
+
+class TestCriteriaStayGeneric(unittest.TestCase):
+    """Verb criteria must not name this task's items.
+
+    The gold farm lives in the order text. A criterion that says "throw the
+    snowball" makes that verb magnetic whenever the order mentions snowballs,
+    which is how `use_item` beat `move_stack` while a chest stood open.
+    """
+
+    TASK_WORDS = ("snowball", "piglin", "gold", "nugget", "ingot", "rotten flesh")
+
+    def test_no_criterion_names_a_task_item(self):
+        for verb, text in ACT_CRITERIA.items():
+            for word in self.TASK_WORDS:
+                self.assertNotIn(word, text.lower(), f"{verb} names {word!r}")

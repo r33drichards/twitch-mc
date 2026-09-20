@@ -19,7 +19,8 @@ import time
 from bridge import Bridge, BridgeDown
 from dispatch import Dispatcher, VERB_DURATION_MS
 from memory import DecisionLog, EntityMemory, TickClock
-from questions import build_questions, ORDER_QUESTIONS
+from questions import (build_act_questions, build_target_question,
+                       target_state, ORDER_QUESTIONS)
 from sse import EventStream
 from state import build_state
 import jev
@@ -39,8 +40,6 @@ VERB_TARGET_QUESTION = {
     "open": "target_place",
     "equip": "target_item",
     "craft": "target_item",
-    "use_item": "target_item",
-    "use_item_hold": "target_item",
     "move_stack": "target_slot",
     "place_block": "target_place",
     "mine_front": "target_place",
@@ -64,6 +63,29 @@ def target_for(verb, answers, state):
     return resolve_target(state, choice)
 
 
+def _known_items(state):
+    """Item ids the state showed the model, as it showed them."""
+    names = set((state.get("inventory") or {}).get("counts") or {})
+    for recipe in state.get("craftable") or []:
+        if recipe.get("result"):
+            names.add(recipe["result"])
+    return names
+
+
+def _as_item(state, choice):
+    """The full item id for a choice, or None if the choice is not an item.
+
+    state.py drops the `minecraft:` namespace from vanilla ids to save tokens,
+    so the model answers `netherite_sword` while the mod's inventory reports
+    `minecraft:netherite_sword`. The namespace goes back on here.
+    """
+    if ":" in choice:
+        return choice
+    if choice in _known_items(state):
+        return f"minecraft:{choice}"
+    return None
+
+
 def resolve_target(state, choice):
     """Turn the model's chosen candidate id back into something executable.
 
@@ -76,9 +98,9 @@ def resolve_target(state, choice):
     for e in list(state.get("in_frame") or []) + list(state.get("out_of_frame") or []):
         if str(e.get("id")) == str(choice):
             return dict(e)
-    if ":" in str(choice):
-        # An item id names a thing to equip, use or craft rather than a place.
-        return {"item": str(choice)}
+    item = _as_item(state, str(choice))
+    if item:
+        return {"item": item}
     if "," in str(choice):
         try:
             x, y, z = (int(float(p)) for p in str(choice).split(","))
@@ -179,10 +201,25 @@ class Harness:
         started = time.monotonic()
         state = self.snapshot()
 
-        answer = jev.ask(state, build_questions(state))
+        # Phase one: which verb. Phase two: that verb's target, asked knowing
+        # the verb, so the two answers cannot contradict each other.
+        answer = jev.ask(state, build_act_questions(state))
         answers = answer["answers"]
         verb = answers["act"]["choice"]
-        target = target_for(verb, answers, state)
+
+        target, target_answer = None, None
+        asked = build_target_question(verb, state)
+        if asked:
+            name, question = asked
+            target_answer = jev.ask(target_state(verb, state), {name: question})
+            answers[name] = target_answer["answers"][name]
+            answer["latency_ms"] = (answer.get("latency_ms", 0)
+                                    + target_answer.get("latency_ms", 0))
+            for field in ("input_tokens", "output_tokens"):
+                answer.setdefault("usage", {})[field] = (
+                    answer.get("usage", {}).get(field, 0)
+                    + target_answer.get("usage", {}).get(field, 0))
+            target = target_for(verb, answers, state)
 
         age = time.time() - float(state.get("captured_at") or time.time())
         if age > STALE_AFTER_S:
@@ -207,7 +244,8 @@ class Harness:
         self.clock.record(gap_ms=gap_ms,
                           model_latency_ms=answer.get("latency_ms", 0),
                           action_ms=result.get("duration_ms", 0))
-        self.decisions.record(verb=verb, target=target, gap_ms=gap_ms, outcome=outcome)
+        self.decisions.record(verb=verb, target=target, gap_ms=gap_ms, outcome=outcome,
+                              result=result)
         self.last_assessment = [{
             "age_s": 0.0,
             "arrived": answers.get("arrived", {}).get("noul"),
@@ -216,18 +254,19 @@ class Harness:
         }]
 
         conf = answers["act"].get("confidence")
+        failed = "" if result.get("ok") in (True, None) else f"  FAILED: {result.get('error')}"
         print(f"[tick {self.tick_id}] {verb}"
               f"{'' if target is None else ' -> ' + str(target.get('type', target))}"
-              f"  conf {conf}  {gap_ms}ms  {outcome or ''}")
-        self.write_trace(state, answer, verb, target, outcome)
+              f"  conf {conf}  {gap_ms}ms  {outcome or ''}{failed}")
+        self.write_trace(state, answer, verb, target, outcome, result)
 
-    def write_trace(self, state, answer, verb, target, outcome):
+    def write_trace(self, state, answer, verb, target, outcome, result=None):
         if not self.trace_path:
             return
         row = {"tick_id": self.tick_id, "at": time.time(), "state": state,
                "answers": answer.get("answers"), "usage": answer.get("usage"),
                "latency_ms": answer.get("latency_ms"), "verb": verb,
-               "target": target, "outcome": outcome}
+               "target": target, "result": result, "outcome": outcome}
         with open(self.trace_path, "a") as fh:
             fh.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
 

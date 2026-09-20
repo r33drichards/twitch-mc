@@ -888,3 +888,34 @@ class TestUseItemHoldVerb(unittest.TestCase):
     def test_its_duration_is_long_enough_to_eat(self):
         # Vanilla food takes ~1.6s of held right-click.
         self.assertGreaterEqual(VERB_DURATION_MS["use_item_hold"], 1600)
+
+
+class TestUseItemUsesWhatIsHeld(unittest.TestCase):
+    """`use_item` is the right-click, nothing more.
+
+    Jev cannot generate text, only pick from enumerated options, so it has no
+    way to pass arguments. The two real controls are "choose a hotbar slot" and
+    "right-click", and they map onto equip and use_item one for one. Having
+    use_item quietly equip something would invent an argument the model never
+    gave; it must choose equip first, like anyone holding a controller.
+    """
+
+    def _bridge(self):
+        bridge = FakeBridge()
+        bridge.inventory_json = json.dumps([
+            {"slot": 1, "id": "minecraft:netherite_sword", "count": 1},
+            {"slot": 8, "id": "minecraft:snowball", "count": 16},
+        ])
+        return bridge
+
+    def test_it_never_changes_the_hotbar_slot(self):
+        bridge = self._bridge()
+        Dispatcher(bridge, sleep=lambda s: None).execute("use_item")
+        slot_calls = [c for c in bridge.calls
+                      if c[0] == "rpc" and c[1] == "player.set_hotbar_slot"]
+        self.assertEqual(slot_calls, [])
+
+    def test_it_uses_the_held_item(self):
+        bridge = self._bridge()
+        result = Dispatcher(bridge, sleep=lambda s: None).execute("use_item")
+        self.assertTrue(result["ok"])

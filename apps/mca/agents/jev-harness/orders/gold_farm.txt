@@ -1,27 +1,12 @@
-Operate the piglin gold farm from where you are standing.
+Run the piglin gold farm from where you stand, and turn everything into gold blocks.
 
-Fighting
-- Hold the netherite sword and attack zombified piglins that are close enough to hit.
-- Piglins only come to you once they are provoked. Each entity carries `aggressive`:
-  true means its attack goal is running, false means it is ignoring you. `hostile`
-  only means it belongs to a monster class, so a peaceful piglin still shows
-  hostile true — judge by `aggressive`.
-- If no piglin nearby is aggressive, provoke them: equip snowballs, face a piglin,
-  and use the snowball. Throwing one at a piglin angers the group.
-- If you have no snowballs, open a chest that is within reach and take a stack.
+Zombified piglins drop gold nuggets and golden gear when killed. Their gear smelts
+into nuggets in the furnace; nuggets craft into ingots and ingots into blocks at the
+crafting table. Snowballs are in the chests here, and a snowball thrown at a piglin
+angers the whole group into coming for you. Eat when you get hungry.
 
-Processing
-- Golden swords, golden helmets, chestplates, leggings and boots smelt down into
-  gold nuggets. Open the furnace, move the gear in, add fuel if it needs some, and
-  take the nuggets out once they are ready.
-- Craft gold nuggets into gold ingots, and gold ingots into gold blocks, at the
-  crafting table.
-- Work at whatever is in reach; the stations list gives each one's distance, and
-  anything out of reach needs you to move closer first.
+Two things you cannot see for yourself: `aggressive` is the only sign a piglin is
+actually coming for you, since `hostile` just means it belongs to a monster class;
+and there is a drop off the edge of this platform.
 
-Upkeep
-- Eat rotten flesh when food is low. Eating needs the item held and the use held
-  down, not a single click.
-- Stay on the platform. There is a drop ahead of you; do not walk off it.
-
-Finish when everything in the inventory is gold blocks.
+Done when everything you carry is gold blocks.

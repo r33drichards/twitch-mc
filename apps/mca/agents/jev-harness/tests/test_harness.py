@@ -96,3 +96,35 @@ class TestTargetForVerb(unittest.TestCase):
     def test_unanswered_target_is_not_invented(self):
         answers = {"target_place": {"choice": "none"}}
         self.assertIsNone(target_for("open", answers, STATE))
+
+
+class TestItemNamespaces(unittest.TestCase):
+    """state.py strips `minecraft:` from vanilla ids; the mod does not.
+
+    The model answers with what it was shown ("netherite_sword"), while
+    dispatch matches against api:inventoryJson(), which returns the full id.
+    Resolving has to put the namespace back, or equip and craft always fail.
+    """
+
+    STATE = {
+        "self": {"x": 0, "y": 0, "z": 0},
+        "in_frame": [], "out_of_frame": [],
+        "inventory": {"counts": {"netherite_sword": 1, "rotten_flesh": 3}},
+        "craftable": [{"result": "gold_ingot", "count": 1}],
+        "stations": {"near": [], "more": {}, "desc": ""},
+    }
+
+    def test_bare_vanilla_name_regains_its_namespace(self):
+        self.assertEqual(resolve_target(self.STATE, "netherite_sword"),
+                         {"item": "minecraft:netherite_sword"})
+
+    def test_craftable_result_resolves_too(self):
+        self.assertEqual(resolve_target(self.STATE, "gold_ingot"),
+                         {"item": "minecraft:gold_ingot"})
+
+    def test_explicit_namespace_is_left_alone(self):
+        self.assertEqual(resolve_target(self.STATE, "modpack:widget"),
+                         {"item": "modpack:widget"})
+
+    def test_a_word_that_is_not_an_item_resolves_to_nothing(self):
+        self.assertIsNone(resolve_target(self.STATE, "somewhere"))

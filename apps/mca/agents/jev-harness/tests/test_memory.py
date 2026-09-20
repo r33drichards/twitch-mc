@@ -134,3 +134,39 @@ class TestTickClock(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDecisionLogCarriesFailures(unittest.TestCase):
+    """A verb that failed must be visible next tick.
+
+    Independent questions can disagree: `act` chose move_stack eight times in a
+    row while `target_slot` answered none, so every one failed with "needs a
+    slot" and the model never learned. Code cannot override the choice, so the
+    failure has to reach the model as data.
+    """
+
+    def test_entry_keeps_the_result(self):
+        log = DecisionLog(clock=lambda: 100.0)
+        log.record(verb="move_stack", target=None, gap_ms=1200, outcome={},
+                   result={"ok": False, "error": "VerbError: move_stack needs a slot"})
+        self.assertFalse(log.recent()[0]["result"]["ok"])
+
+    def test_phrase_says_what_failed_and_why(self):
+        log = DecisionLog(clock=lambda: 100.0)
+        log.record(verb="move_stack", target=None, gap_ms=1200, outcome={},
+                   result={"ok": False, "error": "VerbError: move_stack needs a slot"})
+        phrase = log.desc()
+        self.assertIn("move_stack", phrase)
+        self.assertIn("failed", phrase.lower())
+        self.assertIn("needs a slot", phrase)
+
+    def test_successful_entries_stay_quiet_about_it(self):
+        log = DecisionLog(clock=lambda: 100.0)
+        log.record(verb="attack", target={"id": 1}, gap_ms=300, outcome={"moved_m": 0.0},
+                   result={"ok": True, "error": None})
+        self.assertNotIn("failed", log.desc().lower())
+
+    def test_a_missing_result_is_not_reported_as_failure(self):
+        log = DecisionLog(clock=lambda: 100.0)
+        log.record(verb="hold", target=None, gap_ms=150, outcome={})
+        self.assertNotIn("failed", log.desc().lower())

@@ -61,6 +61,8 @@ EYE_HEIGHT = 1.62
 # A wall of 19 chests is one fact repeated 19 times. Keep the nearest few of
 # each kind and count the rest; both numbers ship.
 MAX_STATIONS = 10
+# Craftable results offered as targets; the recipe book lists hundreds.
+MAX_CRAFTABLE = 8
 MAX_PER_KIND = 2
 
 # A double chest is 54 slots. Ship the first few and roll the rest into
@@ -426,6 +428,32 @@ def _describe(bridge, entities, me):
     return in_frame, out_of_frame
 
 
+def _build_craftable(payload):
+    """Results the recipe book says are makeable right now, one row per result.
+
+    The book lists several recipes for the same item (an ingot from nuggets and
+    an ingot from a block); the model picks a result, not a recipe, so they
+    collapse to one entry carrying the largest yield.
+    """
+    rows = (payload or {}).get("recipes") if isinstance(payload, dict) else None
+    if not rows:
+        return []
+    best = {}
+    for row in rows:
+        result = row.get("result")
+        if not result:
+            continue
+        count = row.get("count") or 1
+        if result not in best or count > best[result]:
+            best[result] = count
+    out = []
+    for result, count in list(best.items())[:MAX_CRAFTABLE]:
+        name = result.split(":")[-1]
+        out.append({"result": result, "count": count,
+                    "desc": f"craft {name}" + (f", {count} at a time" if count > 1 else "")})
+    return out
+
+
 def build_state(bridge, order=None) -> dict:
     """Assemble one tick snapshot from the probes plus the bridge's raycasts.
 
@@ -458,6 +486,8 @@ def build_state(bridge, order=None) -> dict:
 
     screen, screen_err = _read_rpc(bridge, "container.state")
 
+    recipes, recipes_err = _read_rpc(bridge, "craft.recipes", {"craftable_only": True})
+
     return {
         "self": me,
         "hazards": hazards,
@@ -466,12 +496,14 @@ def build_state(bridge, order=None) -> dict:
         "inventory": inventory,
         "stations": stations,
         "container": _build_container(screen),
+        "craftable": _build_craftable(recipes),
         "order": order,
         "errors": {"self": _probe_error(me_raw),
                    "hazards": _probe_error(hz_raw),
                    "entities": _probe_error(ents_raw),
                    "inventory": _probe_error(inv_raw),
                    "stations": scan_err,
-                   "container": screen_err},
+                   "container": screen_err,
+                   "craftable": recipes_err},
         "captured_at": round(time.time(), 1),
     }
