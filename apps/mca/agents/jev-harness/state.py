@@ -503,6 +503,14 @@ def _describe(bridge, entities, me):
     return in_frame, out_of_frame
 
 
+def _has_weapon(inventory):
+    """Whether anything carried counts as a weapon, hand or pack."""
+    from actions import is_weapon
+    counts = (inventory or {}).get("counts") or {}
+    held = ((inventory or {}).get("held") or {}).get("id") or ""
+    return bool(is_weapon(held) or any(is_weapon(name) for name in counts))
+
+
 def _build_craftable(payload):
     """Results the recipe book says are makeable right now, one row per result.
 
@@ -573,6 +581,7 @@ def build_state(bridge, order=None) -> dict:
         "inventory": inventory,
         "stations": stations,
         "container": _build_container(screen),
+        "has_weapon": _has_weapon(inventory),
         "looking_at": _build_looking_at(crosshair, me),
         "craftable": _build_craftable(recipes),
         "order": order,

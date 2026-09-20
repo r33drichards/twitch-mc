@@ -1,0 +1,9 @@
+You are playing Minecraft on a piglin gold farm. Stay alive.
+
+The piglins here are killed with a sword, and you have none. Swords are kept in
+the chests around the platform, along with everything else the farm drops.
+
+`has_weapon` says whether you are armed. There is a drop off the edge of this
+platform.
+
+Done once you are holding a weapon.

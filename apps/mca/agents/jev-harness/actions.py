@@ -26,6 +26,22 @@ MAX_WALK_STEPS = 12
 CONTAINER_PACE_S = 0.35   # the server drops container ops fired faster than this
 
 
+# What counts as a weapon, best first. Melee before ranged: the farm is killed
+# with a sword.
+WEAPON_KINDS = ("_sword", "_axe", "trident", "crossbow", "bow")
+
+
+def is_weapon(item_id):
+    return any(kind in (item_id or "") for kind in WEAPON_KINDS)
+
+
+def weapon_rank(item_id):
+    for rank, kind in enumerate(WEAPON_KINDS):
+        if kind in (item_id or ""):
+            return rank
+    return len(WEAPON_KINDS)
+
+
 class ActionError(Exception):
     """The action could not reach its end state, with the reason why."""
 
@@ -203,6 +219,75 @@ class Actions:
         self._sleep(0.3)
         after = self._self().get("food", 20)
         return _ok("ate", gained=after - before)
+
+    def acquire_weapon(self, search_radius=8, max_containers=8):
+        """End holding a weapon, wherever one has to be found.
+
+        Idempotent: already armed is a success that changed nothing. Otherwise
+        it tries the hand, the hotbar, the rest of the inventory, and finally
+        the containers around it, nearest first.
+        """
+        held = (self._self().get("held") or "")
+        if is_weapon(held):
+            return _ok("already armed", changed=False, weapon=held)
+
+        carried = sorted((s for s in self._inventory() if is_weapon(s.get("id"))),
+                         key=lambda s: weapon_rank(s.get("id")))
+        for stack in carried:
+            slot = stack.get("slot", -1)
+            if 0 <= slot <= 8:
+                self.equip(stack["id"])
+                return _ok("armed from the hotbar", weapon=stack["id"])
+            # Carried but out of the hotbar: shift it down, then hold it.
+            self.bridge.rpc("container.open_inventory")
+            self._sleep(CONTAINER_PACE_S)
+            self.bridge.rpc("container.click",
+                            {"slot": slot, "button": 0, "mode": "QUICK_MOVE"})
+            self._sleep(CONTAINER_PACE_S)
+            self.bridge.rpc("container.close")
+            self._sleep(CONTAINER_PACE_S)
+            try:
+                self.equip(stack["id"])
+                return _ok("armed from the pack", weapon=stack["id"])
+            except ActionError:
+                pass
+
+        tried, last_error = 0, "nothing searched"
+        for position in self._containers_nearby(search_radius):
+            if tried >= max_containers:
+                break
+            tried += 1
+            try:
+                self.open_container(position)
+            except ActionError as exc:
+                last_error = str(exc)
+                continue
+            inside = (self._container().get("containerSlots") or [])
+            weapons = sorted((s for s in inside if is_weapon(s.get("id"))),
+                             key=lambda s: weapon_rank(s.get("id")))
+            if not weapons:
+                self.close_container()
+                continue
+            item = weapons[0]["id"]
+            self.take(item)
+            self.close_container()
+            self.equip(item)
+            return _ok("armed from a container", weapon=item,
+                       found_in=f"{position['x']},{position['y']},{position['z']}",
+                       searched=tried)
+        raise ActionError(
+            f"no weapon in {tried} containers within {search_radius} blocks ({last_error})")
+
+    def _containers_nearby(self, radius):
+        """Container positions around the player, nearest first."""
+        me = self._self()
+        blocks = (self.bridge.rpc("world.blocks_around", {"radius": radius}) or {}).get("blocks") or []
+        found = [b for b in blocks
+                 if any(kind in b.get("id", "")
+                        for kind in ("chest", "shulker_box", "barrel"))]
+        found.sort(key=lambda b: math.dist([me["x"], me["y"], me["z"]],
+                                           [b["x"] + 0.5, b["y"] + 0.5, b["z"] + 0.5]))
+        return [{"x": b["x"], "y": b["y"], "z": b["z"]} for b in found]
 
     def wait(self):
         self._sleep(0.2)

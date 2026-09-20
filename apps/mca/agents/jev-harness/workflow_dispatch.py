@@ -10,7 +10,7 @@ from actions import Actions, ActionError
 
 
 class WorkflowDispatcher:
-    VERBS = ("go_to", "open", "take", "close", "equip",
+    VERBS = ("go_to", "open", "take", "close", "equip", "acquire_weapon",
              "throw_at", "attack", "eat", "wait", "done")
 
     def __init__(self, bridge, sleep=time.sleep):
@@ -60,6 +60,8 @@ class WorkflowDispatcher:
             return actions.throw_at(self._entity(target))
         if verb == "attack":
             return actions.attack(self._entity(target))
+        if verb == "acquire_weapon":
+            return actions.acquire_weapon()
         if verb in ("wait", "done"):
             return actions.wait()
         raise ActionError(f"no such action: {verb}")

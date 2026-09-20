@@ -93,6 +93,8 @@ WORKFLOW_CRITERIA = {
                 "allows for the drop over distance, so it hits what you name.",
     "attack": "Walk into range of a creature and swing at it with what you are holding.",
     "eat": "Eat something you are carrying, restoring food.",
+    "acquire_weapon": "Get a weapon into your hand, wherever one has to be found — "
+                      "the pack, or the containers around you. Ends armed.",
     "wait": "Do nothing for a moment.",
     "done": "The order is finished.",
 }
@@ -335,6 +337,10 @@ def available_verbs(state, controls="semantic"):
         if state.get("container"):
             return [v for v in WORKFLOW_VERBS if v in WORKFLOW_WITH_SCREEN_OPEN]
         offered = [v for v in WORKFLOW_VERBS if v not in ("take", "close")]
+        # Already armed means there is nothing for it to do; the action would
+        # succeed and change nothing.
+        if state.get("has_weapon"):
+            offered = [v for v in offered if v != "acquire_weapon"]
         # Preconditions decide what is on the menu. A thrown item stops at the
         # first thing it meets, so with nothing in view there is nothing to
         # throw at — the bot refused fifteen throws in a row for want of line

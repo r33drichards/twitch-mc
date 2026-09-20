@@ -26,7 +26,10 @@ from bridge import Bridge  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HARNESS = os.path.dirname(HERE)
-ORDER = os.path.join(HARNESS, "orders", "snowball_subtask.txt")
+ORDERS = {"snowball": os.path.join(HARNESS, "orders", "snowball_subtask.txt"),
+          "weapon": os.path.join(HARNESS, "orders", "weapon_subtask.txt")}
+# Where the farm keeps its dropped swords; the reset puts borrowed ones back.
+WEAPON_CHEST = (5730, 230, 439)
 # The farm's own shulker box, which already holds the snowball supply. Nothing
 # is placed or overwritten: the reset only empties the player's pockets, so a
 # run cannot coast on what the last one collected.
@@ -103,6 +106,76 @@ def _snowballs(bridge):
     return sum(s.get("count", 0) for s in inv if s.get("id") == "minecraft:snowball")
 
 
+WEAPON_KINDS = ("_sword", "_axe", "trident", "crossbow", "bow")
+
+
+def _is_weapon(item):
+    return any(kind in (item or "") for kind in WEAPON_KINDS)
+
+
+def reset_weapon(bridge, verbose=True):
+    """Put any borrowed weapon back in the chest and stand somewhere random."""
+    name = bridge.eval("return api:name()")
+    bridge.rpc("container.close")
+    time.sleep(0.3)
+    if float((bridge.rpc("player.state") or {}).get("health") or 0) <= 0:
+        bridge.rpc("player.respawn")
+        time.sleep(2.0)
+    x, y, z = WEAPON_CHEST
+    bridge.rpc("chat.send", {"text": f"/tp {name} {x + 1.5} {y + 1} {z + 0.5} -90 0"})
+    time.sleep(1.0)
+    # Deposit in passes: one shift-click per weapon, and a stack that refuses
+    # to move would otherwise leave the next run starting armed.
+    still = []
+    for _ in range(3):
+        bridge.rpc("container.open", {"x": x, "y": y, "z": z})
+        time.sleep(0.9)
+        state = bridge.rpc("container.state") or {}
+        moved = False
+        for slot in (state.get("playerSlots") or []):
+            if _is_weapon(str(slot.get("id", ""))):
+                bridge.rpc("container.click",
+                           {"slot": slot["slot"], "button": 0, "mode": "QUICK_MOVE"})
+                time.sleep(0.35)
+                moved = True
+        bridge.rpc("container.close")
+        time.sleep(0.4)
+        inv = json.loads(bridge.eval("return api:inventoryJson()"))
+        still = [s.get("id") for s in inv if _is_weapon(str(s.get("id", "")))]
+        if not still or not moved:
+            break
+    sx, sy, sz = random.choice(SPAWNS)
+    yaw = random.choice((-180, -135, -90, -45, 0, 45, 90, 135))
+    bridge.rpc("chat.send", {"text": f"/tp {name} {sx + 0.5} {sy} {sz + 0.5} {yaw} 0"})
+    time.sleep(0.9)
+    if verbose:
+        print(f"  reset: at ({sx},{sy},{sz}) facing {yaw}, "
+              f"{'still carrying ' + str(still) if still else 'unarmed'}")
+    return not still
+
+
+def weapon_milestones(trace_path):
+    """Did it end up armed, and did it get there by choosing to?"""
+    chose = carried = held = False
+    for line in open(trace_path):
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if row.get("verb") == "acquire_weapon":
+            chose = True
+        state = row.get("state") or {}
+        inv = state.get("inventory") or {}
+        if any(_is_weapon(name) for name in (inv.get("counts") or {})):
+            carried = True
+        if _is_weapon(((inv.get("held") or {}).get("id") or "")):
+            held = True
+        result = row.get("result") or {}
+        if result.get("ok") and _is_weapon(str(result.get("weapon") or "")):
+            carried = held = True
+    return {"chose_to_arm": chose, "weapon_in_pack": carried, "weapon_in_hand": held}
+
+
 def milestones(trace_path):
     """What the run actually achieved, read back from its own trace."""
     opened = took = held = threw = provoked = died = False
@@ -138,17 +211,18 @@ def milestones(trace_path):
     return reached
 
 
-def one_run(ticks, controls):
+def one_run(ticks, controls, stage="snowball"):
     before = set(glob.glob(os.path.join(HARNESS, "traces", "*.jsonl")))
     subprocess.run(
         [sys.executable, os.path.join(HARNESS, "harness.py"),
-         "--order-file", ORDER, "--controls", controls, "--max-ticks", str(ticks)],
+         "--order-file", ORDERS[stage], "--controls", controls,
+         "--max-ticks", str(ticks)],
         cwd=HARNESS, capture_output=True, text=True, timeout=ticks * 12 + 60)
     after = set(glob.glob(os.path.join(HARNESS, "traces", "*.jsonl")))
     fresh = sorted(after - before)
     if not fresh:
         return None
-    return milestones(fresh[-1])
+    return (weapon_milestones if stage == "weapon" else milestones)(fresh[-1])
 
 
 def main():
@@ -157,14 +231,15 @@ def main():
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--controls", default="semantic",
                     choices=("semantic", "keyboard", "workflow"))
+    ap.add_argument("--stage", default="snowball", choices=("snowball", "weapon"))
     args = ap.parse_args()
 
     bridge = Bridge()
     scores, tally = [], {}
     for run in range(args.repeat):
         print(f"run {run + 1}/{args.repeat}")
-        reset(bridge)
-        reached = one_run(args.ticks, args.controls)
+        (reset_weapon if args.stage == "weapon" else reset)(bridge)
+        reached = one_run(args.ticks, args.controls, stage=args.stage)
         if reached is None:
             print("  no trace written; the harness did not run")
             continue
