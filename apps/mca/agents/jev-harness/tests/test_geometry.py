@@ -131,6 +131,24 @@ class TestDescribeEntity(unittest.TestCase):
         self.assertIn("45° right", d["desc"])
         self.assertTrue(d["in_frame"])
 
+    def test_dist_field_and_desc_never_disagree(self):
+        # geometry rounded `dist` to 2dp while `desc` formatted the raw float, so a
+        # consumer rounding to 1dp could print 3.8 beside a desc saying 3.7.
+        d = describe_entity(
+            etype="minecraft:zombie", ex=103.749, ey=64.0, ez=100.0,
+            px=100.0, py=64.0, pz=100.0, pyaw=0.0,
+        )
+        self.assertIn(f"{d['dist']}m away", d["desc"])
+
+    def test_pure_side_bearing_does_not_say_left_twice(self):
+        # "left, 90° left" is the word and the side saying the same thing.
+        d = describe_entity(
+            etype="minecraft:cow", ex=110.0, ey=64.0, ez=100.0,
+            px=100.0, py=64.0, pz=100.0, pyaw=0.0,
+        )
+        self.assertIn("90° left", d["desc"])
+        self.assertNotIn("left, 90° left", d["desc"])
+
     def test_dead_ahead_reads_directly_ahead(self):
         d = describe_entity(
             etype="minecraft:cow", ex=100.0, ey=64.0, ez=105.0,

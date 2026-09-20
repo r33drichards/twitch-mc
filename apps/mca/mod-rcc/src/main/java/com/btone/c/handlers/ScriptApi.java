@@ -209,8 +209,46 @@ public final class ScriptApi {
 
     /**
      * Nearby loaded entities within {@code radius} blocks, nearest-first, as a JSON array string:
-     * [{"id":int,"type":"minecraft:zombie","hostile":bool,"living":bool,"x":d,"y":d,"z":d,"dist":d,"health":d}].
-     * {@code hostile} = implements the Enemy marker (monsters). Use with attackEntity(id) for a targeted KillAura.
+     * [{"id":int,"type":"minecraft:zombie","hostile":bool,"aggressive":bool,"facing_me":bool,
+     *   "living":bool,"x":d,"y":d,"z":d,"dist":d,"health":d}].
+     *
+     * <p>The three threat fields answer different questions and none of them is a
+     * synonym for the others:
+     *
+     * <ul>
+     * <li><b>hostile</b> — the entity implements the {@code Enemy} marker interface.
+     *     This is <em>class membership</em>, not intent. A zombified piglin standing
+     *     peacefully is {@code hostile:true} forever, because {@code ZombifiedPiglin
+     *     extends Zombie implements Enemy}. Read it as "belongs to a monster class",
+     *     never as "is coming for me".
+     * <li><b>aggressive</b> — {@code Mob.isAggressive()}, present only for
+     *     {@code Mob}s. This is the one genuinely server-authoritative hostility bit
+     *     a client can see: it reads bit {@code 0x04} of {@code DATA_MOB_FLAGS_ID},
+     *     a {@code SynchedEntityData} entry the server pushes to us.
+     *     {@code MeleeAttackGoal} and {@code RangedBowAttackGoal} raise it when they
+     *     start on a target and drop it when they stop, so it means "this mob's
+     *     attack goal is currently running". Vanilla's own client trusts it —
+     *     {@code ZombifiedPiglinRenderer} reads {@code isAggressive()} straight into
+     *     its render state to pose the arms.
+     * <li><b>facing_me</b> — pure geometry, present for any {@code LivingEntity}:
+     *     the entity's synced head yaw points within {@link #FACING_CONE_DEG} degrees
+     *     of the player. It says where the head is aimed and nothing more. Idle mobs
+     *     stare at nearby players ({@code LookAtPlayerGoal}), so this alone is not a
+     *     threat — it is the qualifier that turns {@code aggressive} into
+     *     "aggressive <em>at me</em>".
+     * </ul>
+     *
+     * <p><b>What a client cannot know.</b> {@code Mob.getTarget()} reads the plain
+     * {@code target} field and {@code NeutralMob.isAngry()} reads the plain
+     * {@code persistentAngerEndTime} field; neither is {@code SynchedEntityData}, and
+     * the AI goals that write them run server-side only. On this client they are
+     * permanently {@code null} / {@code false}. A {@code targeting_me} or {@code angry}
+     * field built on them would report "no threat" with total confidence about a
+     * piglin mid-charge — the same lie as {@code hostile}, just inverted. They are
+     * therefore omitted rather than faked.
+     *
+     * <p>Use with attackEntity(id) for a targeted KillAura. Costs one flag read and
+     * one atan2 per entity — no raycasts, no world iteration.
      */
     public String entitiesJson(double radius) {
         if (mc.level == null) return "[]";
@@ -226,8 +264,10 @@ public final class ScriptApi {
             m.put("id", e.getId());
             m.put("type", BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).toString());
             m.put("hostile", e instanceof net.minecraft.world.entity.monster.Enemy);
+            if (e instanceof net.minecraft.world.entity.Mob mob) m.put("aggressive", mob.isAggressive());
             boolean living = e instanceof net.minecraft.world.entity.LivingEntity;
             m.put("living", living);
+            if (living) m.put("facing_me", facesToward((net.minecraft.world.entity.LivingEntity) e, me));
             m.put("x", e.getX());
             m.put("y", e.getY());
             m.put("z", e.getZ());
@@ -237,6 +277,27 @@ public final class ScriptApi {
         }
         out.sort((a, b) -> Double.compare((double) a.get("dist"), (double) b.get("dist")));
         try { return ITEM_JSON.writeValueAsString(out); } catch (Exception ex) { return "[]"; }
+    }
+
+    /**
+     * How far off a mob's head may be aimed from the player and still count as
+     * looking at them. Half of vanilla's ~60 degree "can see" cone, which keeps a
+     * mob that merely swept past the player from reading as fixated.
+     */
+    private static final double FACING_CONE_DEG = 30.0;
+
+    /**
+     * True when {@code e}'s synced head yaw points within {@link #FACING_CONE_DEG}
+     * degrees of {@code target}. Head rotation is sent to clients every tick, so this
+     * is honest data; it is still only where the head points, not what the mob means.
+     */
+    private static boolean facesToward(net.minecraft.world.entity.LivingEntity e, Vec3 target) {
+        double dx = target.x - e.getX();
+        double dz = target.z - e.getZ();
+        // Minecraft yaw: 0 = +Z, increasing yaw turns right (toward -X).
+        double bearing = Math.toDegrees(Math.atan2(-dx, dz));
+        double delta = Math.abs(((bearing - e.getYHeadRot()) % 360.0 + 540.0) % 360.0 - 180.0);
+        return delta <= FACING_CONE_DEG;
     }
 
     /**

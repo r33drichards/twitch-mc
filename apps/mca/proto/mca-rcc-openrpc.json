@@ -860,6 +860,103 @@
     },
     "paramStructure" : "by-name"
   }, {
+    "name" : "craft.item",
+    "summary" : "Craft by RESULT item id, using the player's recipe book: the server places a known recipe into the open crafting menu and the result slot is shift-clicked. Works for any unlocked recipe (2x2 in the inventory, 3x3 at a table) and hard-codes none. Prefer use_max over a large count: each iteration sleeps on the client thread to respect container pacing. Errors: no_unlocked_recipe_for:<id>, missing_ingredients_for:<id>.",
+    "params" : [ {
+      "name" : "item",
+      "required" : true,
+      "description" : "Result item id, e.g. minecraft:gold_ingot.",
+      "schema" : {
+        "type" : "string"
+      }
+    }, {
+      "name" : "count",
+      "required" : false,
+      "description" : "Placements to perform, 1..16 (default 1).",
+      "schema" : {
+        "type" : "integer"
+      }
+    }, {
+      "name" : "use_max",
+      "required" : false,
+      "description" : "Fill the grid as full as the inventory allows (default false).",
+      "schema" : {
+        "type" : "boolean"
+      }
+    }, {
+      "name" : "x",
+      "required" : false,
+      "description" : "Crafting table x to open first; omit to use the open menu.",
+      "schema" : {
+        "type" : "integer"
+      }
+    }, {
+      "name" : "y",
+      "required" : false,
+      "description" : "Crafting table y.",
+      "schema" : {
+        "type" : "integer"
+      }
+    }, {
+      "name" : "z",
+      "required" : false,
+      "description" : "Crafting table z.",
+      "schema" : {
+        "type" : "integer"
+      }
+    } ],
+    "result" : {
+      "name" : "CraftItemResult",
+      "schema" : {
+        "type" : "object",
+        "properties" : {
+          "crafted" : {
+            "type" : "integer"
+          },
+          "recipe" : {
+            "type" : "string"
+          },
+          "before" : {
+            "type" : "integer"
+          },
+          "after" : {
+            "type" : "integer"
+          }
+        }
+      }
+    },
+    "paramStructure" : "by-name"
+  }, {
+    "name" : "craft.recipes",
+    "summary" : "What the recipe book can currently make, for deciding what to craft.",
+    "params" : [ {
+      "name" : "craftable_only",
+      "required" : false,
+      "description" : "Only recipes the inventory satisfies (default true).",
+      "schema" : {
+        "type" : "boolean"
+      }
+    }, {
+      "name" : "item",
+      "required" : false,
+      "description" : "Substring filter on the result item id.",
+      "schema" : {
+        "type" : "string"
+      }
+    } ],
+    "result" : {
+      "name" : "CraftRecipesResult",
+      "schema" : {
+        "type" : "object",
+        "properties" : {
+          "recipes" : {
+            "type" : "array"
+          }
+        }
+      }
+    },
+    "paramStructure" : "by-name"
+  }, {
     "name" : "container.state",
     "summary" : "Read currently-open screen's slot contents.",
     "params" : [ ],

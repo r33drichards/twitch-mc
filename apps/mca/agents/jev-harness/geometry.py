@@ -70,6 +70,10 @@ def bearing_phrase(rel_yaw: float) -> str:
     if word == "behind" and abs(rel_yaw) > 179.0:
         return "directly behind"
     side = "right" if rel_yaw > 0 else "left"
+    # For the pure side buckets the word and the side are the same thing, so
+    # "left, 90° left" would say it twice.
+    if word == side:
+        return f"{abs(rel_yaw):.0f}° {side}"
     return f"{word}, {abs(rel_yaw):.0f}° {side}"
 
 
@@ -78,15 +82,18 @@ def describe_entity(etype: str, ex: float, ey: float, ez: float,
     """Both representations of one entity: numbers and a phrase."""
     name = etype.split(":")[-1]
     dx, dy, dz = ex - px, ey - py, ez - pz
-    dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+    # Round once, here: `dist` and the distance inside `desc` must never be two
+    # different numbers, or a consumer rounding further prints 3.8 beside a desc
+    # that says 3.7.
+    dist = round(math.sqrt(dx * dx + dy * dy + dz * dz), 1)
     rel = relative_bearing(pyaw, dx, dz)
     vertical = vertical_word(dy)
     desc = (f"{name} at ({ex:.0f},{ey:.0f},{ez:.0f}) — {bearing_phrase(rel)}, "
-            f"{dist:.1f}m away, {vertical}")
+            f"{dist}m away, {vertical}")
     return {
         "type": name,
         "x": ex, "y": ey, "z": ez,
-        "dist": round(dist, 2),
+        "dist": dist,
         "rel_yaw": round(rel, 1),
         "dy": round(dy, 2),
         "bearing_word": bearing_word(rel),

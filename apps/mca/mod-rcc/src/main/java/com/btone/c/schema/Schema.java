@@ -467,6 +467,32 @@ public final class Schema {
                         param("z", "integer", true, null)),
                 resInline(obj("requested", primitive("boolean"))));
 
+        method(methods, schemas, "craft.item",
+                "Craft by RESULT item id, using the player's recipe book: the server places a known "
+                        + "recipe into the open crafting menu and the result slot is shift-clicked. Works "
+                        + "for any unlocked recipe (2x2 in the inventory, 3x3 at a table) and hard-codes none. "
+                        + "Prefer use_max over a large count: each iteration sleeps on the client thread to "
+                        + "respect container pacing. Errors: no_unlocked_recipe_for:<id>, missing_ingredients_for:<id>.",
+                params(
+                        param("item", "string", true, "Result item id, e.g. minecraft:gold_ingot."),
+                        param("count", "integer", false, "Placements to perform, 1..16 (default 1)."),
+                        param("use_max", "boolean", false, "Fill the grid as full as the inventory allows (default false)."),
+                        param("x", "integer", false, "Crafting table x to open first; omit to use the open menu."),
+                        param("y", "integer", false, "Crafting table y."),
+                        param("z", "integer", false, "Crafting table z.")),
+                resInline(obj(
+                        "crafted", primitive("integer"),
+                        "recipe", primitive("string"),
+                        "before", primitive("integer"),
+                        "after", primitive("integer"))));
+
+        method(methods, schemas, "craft.recipes",
+                "What the recipe book can currently make, for deciding what to craft.",
+                params(
+                        param("craftable_only", "boolean", false, "Only recipes the inventory satisfies (default true)."),
+                        param("item", "string", false, "Substring filter on the result item id.")),
+                resInline(obj("recipes", primitive("array"))));
+
         method(methods, schemas, "container.state",
                 "Read currently-open screen's slot contents.",
                 params(),

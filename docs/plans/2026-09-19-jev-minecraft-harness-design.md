@@ -149,6 +149,25 @@ Field-of-view alone cannot distinguish visible from behind-a-wall, so
 Each call raycasts, so probes ask about the few entities that matter rather
 than everything in range.
 
+**What a client cannot know about intent.** A first live run reported four
+peacefully idling zombified piglins as `hostile: true`, because `hostile` is
+`instanceof Enemy` — class membership, not intent. The obvious fixes are
+unavailable: `Mob.getTarget()` and `NeutralMob.isAngry()` read plain fields
+written only by server-side AI, so on a client they are permanently null and
+false. A `targeting_me` built on them would report "no threat" with total
+confidence about a piglin mid-charge, which is the same lie inverted.
+
+`entitiesJson` therefore reports three separate things and conflates none:
+
+| Field | Means | Source |
+|---|---|---|
+| `hostile` | belongs to a monster class | `instanceof Enemy` |
+| `aggressive` | this mob's attack goal is running | `Mob.isAggressive()`, bit `0x04` of the synced `DATA_MOB_FLAGS_ID` |
+| `facing_me` | its head is aimed within 30° of the player | synced head yaw |
+
+`aggressive` is the only server-authoritative hostility bit a client can see;
+`facing_me` is the qualifier that turns it into "aggressive *at me*".
+
 ### 5.3 Natural-language descriptions
 
 Every spatial fact ships twice, numeric and phrased:
@@ -274,6 +293,12 @@ the harness holds until superseded.
 Bearing math and target coordinates are arithmetic over data Jev already chose,
 not decisions.
 
+Crafting, smelting and container work are not in this table yet. When they
+arrive they stay equally generic: `craft.item` takes a result item id and lets
+the server place the recipe from the player's own recipe book, so no recipe is
+named in Java or in Python. A task like running a gold farm is then expressed
+entirely as the order text, never as code.
+
 `press_key` latches rather than pulses, so a bounded press is press, sleep,
 release. **Every tick begins by releasing all movement keys**, and `atexit` plus
 signal handlers do the same. A held key surviving the process is the harness's
@@ -309,10 +334,29 @@ measured dollars per hour.
 
 ## 10. Cost
 
-About 950 tokens of state plus 150 tokens of descriptions per tick. At 3Hz that
-is roughly **$0.50/hour**, against the Doom demo's $7/hour at 10Hz.
+Measured on 2026-09-19 against a real 6-entity Nether tick, not estimated:
 
----
+| | input tokens | $/hour @ 3Hz |
+|---|---|---|
+| API floor (empty state, one question) | 285 | — |
+| First implementation | 2350 | $1.07 |
+| After trimming | 1895 | $0.86 |
+
+State alone, floor subtracted, fell 1435 → 1103 tokens.
+
+**The earlier estimate in this document was wrong, and the way it was wrong is
+worth keeping.** It budgeted "~950 tokens of state" and then costed the tick as
+if state were the whole request. It is not: the fixed API floor and the question
+block together spend about 905 tokens before a single entity is described, and
+the largest single item is the `act` criteria — the very prose this design says
+must stay concrete and complete. Halving the original 2350 would have left
+roughly 270 tokens for the entire world.
+
+Trimming came from rounding (`18.92188262939453` → `18.9`), dropping fields the
+`desc` string already carries, and stripping the `minecraft:` prefix from vanilla
+ids while keeping modded namespaces intact. Nothing was cut from `desc`, the
+hazard fields, or entity ids, and entity coordinates were restored after they
+turned out to be load-bearing for `advance` and `place_block`.
 
 ## 11. Layout
 

@@ -3,80 +3,52 @@
 
     python3 smoke.py              # probes + Jev
     python3 smoke.py --no-jev     # probes only, no API call
+    python3 smoke.py --measure    # probes + Jev, report the real token bill
 """
-import glob
 import json
-import os
 import subprocess
 import sys
 import time
 import urllib.request
 
 from bridge import Bridge, BridgeDown
-from geometry import describe_entity, bearing_phrase, vertical_word
+from geometry import bearing_phrase
+from state import build_state
 
-PROBE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "probes")
-MAX_DESCRIBED = 6
-
-
-def compose_probes() -> str:
-    """Concatenate probes/*.lua into one pcall-wrapped script."""
-    parts = ["local S = {}",
-             "local function probe(n, fn)",
-             "  local ok, v = pcall(fn)",
-             "  S[n] = ok and v or { error = tostring(v) }",
-             "end"]
-    for path in sorted(glob.glob(os.path.join(PROBE_DIR, "*.lua"))):
-        name = os.path.basename(path)[:-4]
-        body = open(path).read().rstrip()
-        parts.append(f"probe({name!r}, function()\n{body}\nend)")
-    parts.append("return S")
-    return "\n".join(parts)
+# Input pricing from the design doc: $0.042 per million tokens, output free.
+USD_PER_MTOK = 0.042
+TICKS_PER_HOUR = 3 * 3600
 
 
-def build_state(bridge: Bridge) -> dict:
-    raw = bridge.eval(compose_probes())
-    me = raw.get("self", {})
-    entities = raw.get("entities")
-    if isinstance(entities, str):
-        entities = json.loads(entities)
-    entities = entities or []
+def encode(body: dict) -> bytes:
+    """The request as it goes on the wire, with nothing paid for twice.
 
-    described = []
-    for e in entities[:MAX_DESCRIBED]:
-        d = describe_entity(etype=e["type"], ex=e["x"], ey=e["y"], ez=e["z"],
-                            px=me["x"], py=me["y"], pz=me["z"], pyaw=me["yaw"])
-        d["id"] = e["id"]
-        d["hostile"] = e.get("hostile", False)
-        if d["in_frame"]:
-            # Cone says yes; ask the game whether a wall disagrees.
-            d["in_frame"] = bool(bridge.eval(f"return api:canSee({e['id']})"))
-            d["desc"] += "" if d["in_frame"] else " (out of sight)"
-        described.append(d)
-
-    hz = raw.get("hazard", {})
-    return {
-        "self": {**me, "desc": (f"{me.get('name')} at "
-                                f"({me.get('x',0):.0f},{me.get('y',0):.0f},{me.get('z',0):.0f}), "
-                                f"facing yaw {me.get('yaw',0):.0f}, "
-                                f"{me.get('health')}/20 health, {me.get('food')}/20 food, "
-                                f"holding {me.get('held')}")},
-        "hazards": {**hz, "desc": (f"standing on {hz.get('block_under')}, "
-                                   f"{hz.get('block_ahead')} directly ahead, "
-                                   f"{hz.get('block_ahead_under')} underfoot ahead")},
-        "in_frame": [d for d in described if d["in_frame"]],
-        "out_of_frame": [d for d in described if not d["in_frame"]],
-        "order": None,
-        "captured_at": time.time(),
-    }
+    `ensure_ascii` would spell the em dash in every description `\u2014`, six
+    characters for one, and the default separators put a space after every
+    comma and colon in a payload that is almost all commas and colons.
+    Neither carries meaning, and the model is billed for both.
+    """
+    return json.dumps(body, ensure_ascii=False,
+                      separators=(",", ":")).encode("utf-8")
 
 
-def ask_jev(state: dict) -> dict:
-    key = subprocess.check_output(
-        ["security", "find-generic-password", "-s", "typesafe-api-key", "-w"]).decode().strip()
-    candidates = {str(d["id"]): d["desc"] for d in state["in_frame"] + state["out_of_frame"]}
+def target_label(entity: dict) -> str:
+    """A candidate line for the `target` question.
+
+    Short on purpose. The entity's full `desc` is already in the state under
+    this same id, so repeating it verbatim here would pay for the phrase
+    twice; what a criterion has to do is tell the options apart.
+    """
+    return (f"{entity['type']}, {bearing_phrase(entity['rel_yaw'])}, "
+            f"{entity['dist']}m")
+
+
+def build_questions(state: dict) -> dict:
+    """The one batched question set. `target` enumerates what Jev may pick."""
+    candidates = {str(d["id"]): target_label(d)
+                  for d in state["in_frame"] + state["out_of_frame"]}
     candidates["none"] = "No entity is the right target right now."
-    body = {"model": "jev-latest", "state": state, "questions": {
+    return {
         "act": {"type": "choice",
                 "instructions": "Pick the single next physical action for the bot, given `order` and the world state. With no order, the bot is idle.",
                 "criteria": {
@@ -97,9 +69,16 @@ def ask_jev(state: dict) -> dict:
                       "instructions": "The bot is in immediate physical danger.",
                       "criteria": {"true": "A hostile is within 4 blocks, or health fell in the last 2 seconds.",
                                    "false": "No hostile within 4 blocks and health is steady."}},
-    }}
+    }
+
+
+def ask_jev(state: dict) -> dict:
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-s", "typesafe-api-key", "-w"]).decode().strip()
+    body = {"model": "jev-latest", "state": state,
+            "questions": build_questions(state)}
     req = urllib.request.Request("https://api.typesafe.ai/v1/systemone",
-                                 data=json.dumps(body).encode(),
+                                 data=encode(body),
                                  headers={"Authorization": f"Bearer {key}",
                                           "Content-Type": "application/json"},
                                  method="POST")
@@ -109,12 +88,26 @@ def ask_jev(state: dict) -> dict:
     return answer
 
 
+def report_cost(state: dict, answer: dict) -> None:
+    """What the tick actually cost, from the API's own usage numbers."""
+    tokens = answer["usage"]["input_tokens"]
+    state_bytes = len(encode(state))
+    question_bytes = len(encode(build_questions(state)))
+    entities = len(state["in_frame"]) + len(state["out_of_frame"])
+    print(f"\nentities described   {entities}")
+    print(f"state bytes          {state_bytes}")
+    print(f"question bytes       {question_bytes}")
+    print(f"input tokens         {tokens}")
+    print(f"at 3Hz               ${tokens * TICKS_PER_HOUR * USD_PER_MTOK / 1e6:.2f}/hour")
+
+
 def main() -> int:
     try:
         bridge = Bridge()
     except FileNotFoundError:
         print("no bridge config; has the 26.2 client ever run?")
         return 2
+    measure = "--measure" in sys.argv
     print(f"bridge: 127.0.0.1:{bridge.port}")
     try:
         t = time.time()
@@ -124,13 +117,17 @@ def main() -> int:
         print("Launch the 'mca-rcc (26.2)' profile and load a world, then re-run.")
         return 1
     print(f"state assembled in {time.time()-t:.3f}s\n")
-    print(json.dumps(state, indent=2)[:2500])
+    if not measure:
+        print(json.dumps(state, indent=2)[:2500])
     if "--no-jev" in sys.argv:
         return 0
     ans = ask_jev(state)
     print(f"\njev {ans['model']} in {ans['_latency_s']}s, "
           f"{ans['usage']['input_tokens']} input tokens")
-    print(json.dumps(ans["answers"], indent=2))
+    if measure:
+        report_cost(state, ans)
+    else:
+        print(json.dumps(ans["answers"], indent=2))
     print("\n(dry run — nothing was executed)")
     return 0
 
