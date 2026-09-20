@@ -791,3 +791,21 @@ class TestCraftable(unittest.TestCase):
         st = state.build_state(self.RecipeBridge(fail=True))
         self.assertEqual(st["craftable"], [])
         self.assertIsNotNone(st["errors"]["craftable"])
+
+
+class TestEntityHealthIsVisible(unittest.TestCase):
+    """The phrase should say how hurt a creature is.
+
+    Thirty attacks landed on nothing and the state never showed the target's
+    health, so there was no way to see that it was not working — or that one
+    piglin was already at 0.06 hp.
+    """
+
+    def test_phrase_carries_health(self):
+        raw = {"self": {"x": 0.0, "y": 64.0, "z": 0.0, "yaw": 0.0},
+               "entities": json.dumps([{"id": 1, "type": "minecraft:zombified_piglin",
+                                        "x": 0.0, "y": 64.0, "z": 5.0, "dist": 5.0,
+                                        "hostile": True, "living": True, "health": 12.5}])}
+        st = state.build_state(FakeBridge(raw=raw))
+        desc = (st["in_frame"] + st["out_of_frame"])[0]["desc"]
+        self.assertIn("12.5", desc)

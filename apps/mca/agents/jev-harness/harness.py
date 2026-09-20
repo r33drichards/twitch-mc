@@ -18,7 +18,7 @@ import time
 
 from bridge import Bridge, BridgeDown
 from dispatch import Dispatcher, VERB_DURATION_MS
-from memory import DecisionLog, EntityMemory, TickClock
+from memory import ContainerMemory, DecisionLog, EntityMemory, TickClock
 from questions import (build_act_questions, build_target_question,
                        target_state, ORDER_QUESTIONS)
 from sse import EventStream
@@ -27,6 +27,7 @@ import jev
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TRACE_DIR = os.path.join(HERE, "traces")
+LIVE_PATH = os.path.join(TRACE_DIR, "live.json")
 STALE_AFTER_S = 1.5
 
 
@@ -115,7 +116,14 @@ def resolve_target(state, choice):
     return None
 
 
-def measure_outcome(before, after):
+def _entity_health(state, entity_id):
+    for e in list((state or {}).get("in_frame") or []) + list((state or {}).get("out_of_frame") or []):
+        if e.get("id") == entity_id:
+            return e.get("health")
+    return None
+
+
+def measure_outcome(before, after, target=None):
     """What measurably followed the action. Facts only, no judgement."""
     if not before or not after:
         return {}
@@ -125,10 +133,19 @@ def measure_outcome(before, after):
     moved = math.dist(
         [b.get("x", 0.0), b.get("y", 0.0), b.get("z", 0.0)],
         [a.get("x", 0.0), a.get("y", 0.0), a.get("z", 0.0)])
-    return {
+    out = {
         "moved_m": round(moved, 2),
         "health_delta": round(a.get("health", 0.0) - b.get("health", 0.0), 2),
     }
+    # Whether the thing acted upon actually changed. A swing from out of reach
+    # reports ok and does nothing, so without this there is no way to tell the
+    # difference between hitting a mob and missing it.
+    if target and target.get("id") is not None:
+        was = _entity_health(before, target["id"])
+        now = _entity_health(after, target["id"])
+        if was is not None and now is not None:
+            out["target_health_delta"] = round(now - was, 2)
+    return out
 
 
 def load_order(path):
@@ -139,20 +156,42 @@ def load_order(path):
 
 
 class Harness:
-    def __init__(self, bridge, order=None, dry_run=False, trace_path=None):
+    def __init__(self, bridge, order=None, dry_run=False, trace_path=None,
+                 order_path=None):
         self.bridge = bridge
         self.order = order
+        # Re-read on every tick so the order can be edited while it runs.
+        self.order_path = order_path
+        self._order_mtime = self._mtime(order_path)
         self.dry_run = dry_run
         self.events = EventStream(bridge)
         self.dispatcher = Dispatcher(bridge)
         self.entities = EntityMemory()
+        self.containers = ContainerMemory()
         self.decisions = DecisionLog()
         self.clock = TickClock(verb_duration_ms=VERB_DURATION_MS)
         self.trace_path = trace_path
         self.tick_id = 0
+        self._last_open_target = None
         self.last_assessment = []
         self._last_gap = None
         self._seen_chat = set()
+
+    @staticmethod
+    def _mtime(path):
+        try:
+            return os.path.getmtime(path) if path else None
+        except OSError:
+            return None
+
+    def reload_order(self):
+        """Pick up an edited order file without restarting."""
+        mtime = self._mtime(self.order_path)
+        if mtime is None or mtime == self._order_mtime:
+            return
+        self._order_mtime = mtime
+        self.order = load_order(self.order_path)
+        print(f"[order] reloaded from {os.path.basename(self.order_path)}")
 
     # ---- state ----
 
@@ -163,12 +202,23 @@ class Harness:
                               state.get("out_of_frame") or [],
                               visible_ids=visible)
         state["seen_recently"] = self.entities.seen_recently()
+        self.containers.observe(self._last_open_target, state.get("container"))
+        state["containers_seen"] = self.containers.recent()
         state["recent_decisions"] = self.decisions.recent()
         state["recent_decisions_desc"] = self.decisions.desc()
         # The model's own prior reading, kept apart from anything observed.
         state["self_assessment"] = self.last_assessment
         state["tick"] = self.clock.snapshot()
         state["recent_chat"] = [e.get("payload", {}) for e in self.events.recent_chat(3)]
+        # The game's own sound feed. A thrown item landing, a mob grunting or
+        # being hurt all show up here, and nothing else tells the bot what its
+        # last action actually did.
+        sounds = self.events.recent_sounds(3.0)
+        state["recent_sounds"] = [
+            {"sound": (e.get("payload") or {}).get("soundId")
+                      or (e.get("payload") or {}).get("text"),
+             "age_s": round(e.get("age_s", 0.0), 1)}
+            for e in sounds[-8:]]
         state["tick_id"] = self.tick_id
         return state
 
@@ -227,6 +277,9 @@ class Harness:
             self.write_trace(state, answer, verb, None, {"discarded": True})
             return
 
+        if verb == "open" and target:
+            self._last_open_target = dict(target)
+
         if self.dry_run:
             result = {"verb": verb, "ok": None, "duration_ms": 0, "dry_run": True}
         else:
@@ -236,9 +289,14 @@ class Harness:
         try:
             after = {"self": self.bridge.eval(
                 "return {x=api:x(),y=api:y(),z=api:z(),health=api:health()}")}
+            if target and target.get("id") is not None:
+                seen = json.loads(self.bridge.eval(
+                    f"return api:entitiesJson(32)")) or []
+                after["in_frame"] = seen
+                after["out_of_frame"] = []
         except Exception:  # noqa: BLE001 - a failed read is not a decision
             pass
-        outcome = measure_outcome(state, after)
+        outcome = measure_outcome(state, after, target=target)
 
         gap_ms = int((time.monotonic() - started) * 1000)
         self.clock.record(gap_ms=gap_ms,
@@ -269,12 +327,26 @@ class Harness:
                "target": target, "result": result, "outcome": outcome}
         with open(self.trace_path, "a") as fh:
             fh.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
+        self.write_live(row)
+
+    def write_live(self, row):
+        """Overwrite the single file the debug view polls."""
+        row = dict(row, order=self.order)
+        tmp = LIVE_PATH + ".tmp"
+        try:
+            os.makedirs(TRACE_DIR, exist_ok=True)
+            with open(tmp, "w") as fh:
+                json.dump(row, fh, ensure_ascii=False)
+            os.replace(tmp, LIVE_PATH)
+        except OSError:
+            pass
 
     def run(self, max_ticks=None):
         self.events.start()
         try:
             while max_ticks is None or self.tick_id < max_ticks:
                 try:
+                    self.reload_order()
                     self.poll_orders()
                     self.tick()
                 except BridgeDown as exc:
@@ -302,7 +374,8 @@ def main():
         os.makedirs(TRACE_DIR, exist_ok=True)
         trace_path = os.path.join(TRACE_DIR, f"{int(time.time())}.jsonl")
 
-    harness = Harness(Bridge(), order=order, dry_run=args.dry_run, trace_path=trace_path)
+    harness = Harness(Bridge(), order=order, dry_run=args.dry_run,
+                      trace_path=trace_path, order_path=args.order_file)
     print(f"order: {order!r}\ntrace: {trace_path}")
     harness.run(max_ticks=args.max_ticks)
     return 0

@@ -128,3 +128,41 @@ class TestItemNamespaces(unittest.TestCase):
 
     def test_a_word_that_is_not_an_item_resolves_to_nothing(self):
         self.assertIsNone(resolve_target(self.STATE, "somewhere"))
+
+
+class TestOutcomeWatchesTheTarget(unittest.TestCase):
+    """An action against a creature should report what happened to it.
+
+    Thirty ticks of `attack` on a piglin 8.7m away all reported ok, because the
+    entity existed and the swing happened; the server simply ignored a swing
+    from out of reach. Nothing in state ever said the target was unharmed, so
+    there was nothing to learn from. Health is observation, not judgement.
+    """
+
+    BEFORE = {"self": {"x": 0.0, "y": 64.0, "z": 0.0, "health": 20.0},
+              "in_frame": [{"id": 7, "type": "zombified_piglin", "health": 20.0}],
+              "out_of_frame": []}
+
+    def test_target_health_change_is_reported(self):
+        after = {"self": {"x": 0.0, "y": 64.0, "z": 0.0, "health": 20.0},
+                 "in_frame": [{"id": 7, "type": "zombified_piglin", "health": 12.5}],
+                 "out_of_frame": []}
+        out = measure_outcome(self.BEFORE, after, target={"id": 7})
+        self.assertAlmostEqual(out["target_health_delta"], -7.5, places=1)
+
+    def test_an_untouched_target_reports_zero_not_silence(self):
+        after = {"self": {"x": 0.0, "y": 64.0, "z": 0.0, "health": 20.0},
+                 "in_frame": [{"id": 7, "type": "zombified_piglin", "health": 20.0}],
+                 "out_of_frame": []}
+        out = measure_outcome(self.BEFORE, after, target={"id": 7})
+        self.assertEqual(out["target_health_delta"], 0.0)
+
+    def test_a_target_that_vanished_is_not_reported_as_unharmed(self):
+        after = {"self": {"x": 0.0, "y": 64.0, "z": 0.0, "health": 20.0},
+                 "in_frame": [], "out_of_frame": []}
+        out = measure_outcome(self.BEFORE, after, target={"id": 7})
+        self.assertNotIn("target_health_delta", out)
+
+    def test_no_target_means_no_target_field(self):
+        out = measure_outcome(self.BEFORE, self.BEFORE, target=None)
+        self.assertNotIn("target_health_delta", out)

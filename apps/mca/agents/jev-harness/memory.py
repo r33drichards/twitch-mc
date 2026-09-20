@@ -69,6 +69,55 @@ class EntityMemory:
         return out[: self._max]
 
 
+class ContainerMemory:
+    """What was inside the containers already opened, and how long ago.
+
+    A container's contents vanish from state the moment the screen shuts, so
+    without this the same chest can be opened, judged empty of anything useful,
+    closed, and opened again forever.
+    """
+
+    def __init__(self, clock=time.time, ttl_s=120.0, max_entries=6):
+        self._clock = clock
+        self._ttl = ttl_s
+        self._max = max_entries
+        self._seen = {}
+
+    def observe(self, position, container):
+        """Record an open container's contents against the position opened."""
+        if not position or not container:
+            return
+        try:
+            key = (int(position["x"]), int(position["y"]), int(position["z"]))
+        except (KeyError, TypeError, ValueError):
+            return
+        kinds = []
+        for slot in container.get("slots") or []:
+            name = str(slot.get("id", "")).split(":")[-1]
+            if name and name not in kinds:
+                kinds.append(name)
+        self._seen[key] = {"screen": container.get("screen"), "kinds": kinds,
+                           "at": self._clock()}
+
+    def recent(self):
+        now = self._clock()
+        out = []
+        for (x, y, z), rec in list(self._seen.items()):
+            age = round(now - rec["at"], 1)
+            if age > self._ttl:
+                del self._seen[(x, y, z)]
+                continue
+            kinds = rec["kinds"]
+            held = ", ".join(kinds[:8]) + (f", +{len(kinds) - 8} more" if len(kinds) > 8 else "")
+            out.append({
+                "x": x, "y": y, "z": z, "age_s": age, "kinds": kinds,
+                "desc": (f"{rec.get('screen') or 'container'} at ({x},{y},{z}) — looked "
+                         f"{age}s ago, held {held or 'nothing'}"),
+            })
+        out.sort(key=lambda r: r["age_s"])
+        return out[: self._max]
+
+
 class DecisionLog:
     """The last few decisions with what measurably followed them."""
 

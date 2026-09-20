@@ -1,7 +1,7 @@
 """Memory layers and the self-clock: everything the loop remembers between ticks."""
 import unittest
 
-from memory import EntityMemory, DecisionLog, TickClock
+from memory import ContainerMemory, EntityMemory, DecisionLog, TickClock
 
 
 def ent(eid, etype="zombie", desc=None, **kw):
@@ -170,3 +170,51 @@ class TestDecisionLogCarriesFailures(unittest.TestCase):
         log = DecisionLog(clock=lambda: 100.0)
         log.record(verb="hold", target=None, gap_ms=150, outcome={})
         self.assertNotIn("failed", log.desc().lower())
+
+
+class TestContainerMemory(unittest.TestCase):
+    """What was inside the containers already opened.
+
+    The bot opened one chest, found nothing it wanted, closed it, and opened it
+    again — thirty-five times. Nothing in state recorded that it had just
+    looked, and a container's contents are invisible once the screen shuts.
+    """
+
+    CHEST = {"screen": "chest", "desc": "chest open",
+             "slots": [{"slot": 0, "id": "minecraft:dirt", "count": 3},
+                       {"slot": 1, "id": "minecraft:iron_ingot", "count": 64}]}
+
+    def test_an_opened_container_is_remembered_with_its_contents(self):
+        m = ContainerMemory(clock=lambda: 100.0)
+        m.observe({"x": 5735, "y": 232, "z": 438}, self.CHEST)
+        seen = m.recent()
+        self.assertEqual(len(seen), 1)
+        self.assertIn("iron_ingot", seen[0]["desc"])
+
+    def test_the_entry_ages(self):
+        t = [100.0]
+        m = ContainerMemory(clock=lambda: t[0])
+        m.observe({"x": 1, "y": 2, "z": 3}, self.CHEST)
+        t[0] = 107.0
+        self.assertIn("7.0s ago", m.recent()[0]["desc"])
+
+    def test_reopening_refreshes_rather_than_duplicates(self):
+        t = [100.0]
+        m = ContainerMemory(clock=lambda: t[0])
+        m.observe({"x": 1, "y": 2, "z": 3}, self.CHEST)
+        t[0] = 110.0
+        m.observe({"x": 1, "y": 2, "z": 3}, self.CHEST)
+        self.assertEqual(len(m.recent()), 1)
+        self.assertIn("0.0s ago", m.recent()[0]["desc"])
+
+    def test_old_entries_fall_out(self):
+        t = [100.0]
+        m = ContainerMemory(clock=lambda: t[0], ttl_s=120.0)
+        m.observe({"x": 1, "y": 2, "z": 3}, self.CHEST)
+        t[0] = 300.0
+        self.assertEqual(m.recent(), [])
+
+    def test_nothing_is_recorded_without_a_position(self):
+        m = ContainerMemory(clock=lambda: 100.0)
+        m.observe(None, self.CHEST)
+        self.assertEqual(m.recent(), [])

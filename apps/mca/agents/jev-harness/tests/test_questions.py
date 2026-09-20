@@ -48,9 +48,12 @@ class TestBuildQuestions(unittest.TestCase):
         # Targets are split by kind; see TestSpeculativeTargetQuestions.
         self.assertEqual(q["target_entity"]["type"], "choice")
 
-    def test_act_offers_exactly_the_dispatcher_verbs(self):
+    def test_act_offers_only_verbs_the_dispatcher_can_run(self):
+        # The set is now situational — see tests/test_affordances.py — so the
+        # invariant is that everything offered is runnable, not that everything
+        # runnable is offered.
         q = build_questions(STATE)
-        self.assertTrue(set(Dispatcher.VERBS).issubset(set(q["act"]["criteria"])))
+        self.assertTrue(set(q["act"]["criteria"]).issubset(set(Dispatcher.VERBS)))
 
     def test_supporting_nouls_ride_along(self):
         q = build_questions(STATE)

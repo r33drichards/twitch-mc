@@ -410,6 +410,10 @@ def _describe(bridge, entities, me):
             desc += ", aggressive" if aggressive else ", not aggressive"
         if facing is not None:
             desc += ", facing you" if facing else ", facing away"
+        # How hurt it is, so an attack that changes nothing is visible as such.
+        health = e.get("health")
+        if health is not None:
+            desc += f", {_round(health, 1)} hp"
         trimmed = {
             "id": e["id"],
             "type": d["type"],

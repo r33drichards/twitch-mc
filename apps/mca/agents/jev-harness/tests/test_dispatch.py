@@ -15,7 +15,7 @@ import textwrap
 import unittest
 
 import dispatch
-from dispatch import LATCHING_KEYS, VERB_DURATION_MS, Dispatcher
+from dispatch import AIM_STEP_DEG, LATCHING_KEYS, VERB_DURATION_MS, Dispatcher
 
 HARNESS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -103,6 +103,7 @@ def make(bridge=None, **kw):
 
 
 ALL_VERBS = ["advance", "retreat", "turn_toward", "jump", "mine_front", "use_item_hold",
+             "aim_higher", "aim_lower",
              "place_block", "attack", "use_item", "hold", "done",
              "equip", "craft", "open", "move_stack", "close"]
 
@@ -268,7 +269,7 @@ class TestVerbTable(unittest.TestCase):
     def test_durations_match_the_design(self):
         self.assertEqual(VERB_DURATION_MS, {
             "advance": 300, "retreat": 300, "turn_toward": 0, "jump": 150,
-            "use_item_hold": 1700,
+            "use_item_hold": 1700, "aim_higher": 0, "aim_lower": 0,
             "mine_front": 1000, "place_block": 0, "attack": 0, "use_item": 0,
             "hold": 150, "done": 150,
             "equip": 0, "craft": 1000, "open": 1000, "move_stack": 300,
@@ -919,3 +920,80 @@ class TestUseItemUsesWhatIsHeld(unittest.TestCase):
         bridge = self._bridge()
         result = Dispatcher(bridge, sleep=lambda s: None).execute("use_item")
         self.assertTrue(result["ok"])
+
+
+class TestFacingAimsThePitchToo(unittest.TestCase):
+    """Facing a target must aim vertically, not just horizontally.
+
+    _face set pitch only when the target carried one, and entity targets never
+    do — so turning toward a piglin swung the yaw and left the head at whatever
+    angle it happened to hold. Eleven snowballs were thrown at piglins two
+    metres below eye level with the pitch stale, and every one fell short.
+    """
+
+    def _dispatcher(self, target_y):
+        bridge = FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
+        d = Dispatcher(bridge, sleep=lambda s: None)
+        d.execute("turn_toward", {"x": 10.0, "y": target_y, "z": 0.0})
+        rot = [c[2] for c in bridge.calls
+               if c[0] == "rpc" and c[1] == "player.set_rotation"][-1]
+        return rot
+
+    def test_a_target_below_eye_level_aims_downward(self):
+        # Positive pitch is downward in Minecraft.
+        rot = self._dispatcher(target_y=62.0)
+        self.assertIn("pitch", rot)
+        self.assertGreater(rot["pitch"], 0)
+
+    def test_a_target_above_eye_level_aims_upward(self):
+        rot = self._dispatcher(target_y=70.0)
+        self.assertLess(rot["pitch"], 0)
+
+    def test_a_level_target_aims_near_level(self):
+        rot = self._dispatcher(target_y=64.0)
+        self.assertLess(abs(rot["pitch"]), 12.0)
+
+    def test_an_explicit_pitch_still_wins(self):
+        bridge = FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
+        Dispatcher(bridge, sleep=lambda s: None).execute(
+            "turn_toward", {"x": 10.0, "y": 62.0, "z": 0.0, "pitch": -30.0})
+        rot = [c[2] for c in bridge.calls
+               if c[0] == "rpc" and c[1] == "player.set_rotation"][-1]
+        self.assertEqual(rot["pitch"], -30.0)
+
+
+class TestAimAdjustmentVerbs(unittest.TestCase):
+    """Controls for aiming above or below what you are facing.
+
+    turn_toward points straight at a thing. Thrown items fall on the way, so
+    hitting something at range needs aiming higher than it — a fact about the
+    world the model has to discover for itself. These verbs are the means to
+    try it, nothing more.
+    """
+
+    def _rot_after(self, verb, pitch_before=0.0):
+        state = {"player.state": {"inWorld": True,
+                                  "pos": {"x": 0.0, "y": 64.0, "z": 0.0},
+                                  "blockPos": {"x": 0, "y": 64, "z": 0},
+                                  "rot": {"yaw": 90.0, "pitch": pitch_before}}}
+        bridge = FakeBridge(rpc_results=state)
+        Dispatcher(bridge, sleep=lambda s: None).execute(verb)
+        return [c[2] for c in bridge.calls
+                if c[0] == "rpc" and c[1] == "player.set_rotation"][-1]
+
+    def test_aim_higher_raises_the_head(self):
+        # Negative pitch is upward in Minecraft.
+        self.assertLess(self._rot_after("aim_higher")["pitch"], 0.0)
+
+    def test_aim_lower_drops_the_head(self):
+        self.assertGreater(self._rot_after("aim_lower")["pitch"], 0.0)
+
+    def test_aiming_keeps_the_current_yaw(self):
+        self.assertEqual(self._rot_after("aim_higher")["yaw"], 90.0)
+
+    def test_aim_is_relative_to_where_the_head_already_points(self):
+        self.assertAlmostEqual(self._rot_after("aim_higher", pitch_before=20.0)["pitch"],
+                               20.0 - AIM_STEP_DEG, places=1)
+
+    def test_the_head_cannot_spin_past_straight_up(self):
+        self.assertGreaterEqual(self._rot_after("aim_higher", pitch_before=-88.0)["pitch"], -90.0)

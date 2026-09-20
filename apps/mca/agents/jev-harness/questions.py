@@ -30,6 +30,9 @@ ACT_CRITERIA = {
     "move_stack": "Take a whole stack out of the open container, or put one in. This is "
                   "how items are collected from a chest and how a furnace is loaded.",
     "close": "Close the open container screen.",
+    "aim_higher": "Tilt the head up a notch without turning, so the next thing thrown "
+                  "or used goes higher than where you are looking now.",
+    "aim_lower": "Tilt the head down a notch without turning.",
     "hold": "Do nothing this tick; waiting is what the situation calls for.",
     "done": "The order is fully satisfied and should be cleared.",
 }
@@ -151,6 +154,27 @@ def slot_candidates(state):
     return candidates
 
 
+# Which verbs make sense with a screen up, and which only make sense without
+# one. Offering `attack` through an open chest is offering a fiction: the swing
+# cannot land and the model has no way to know that. This is the candidate rule
+# again — the model can only pick what it is shown.
+VERBS_WITH_SCREEN_OPEN = ("move_stack", "close", "hold", "done")
+VERBS_NEEDING_CRAFTING_TABLE = ("craft",)
+VERBS_NEEDING_A_SCREEN = ("move_stack", "close", "craft")
+
+
+def available_verbs(state):
+    """The verbs this situation actually allows, in criteria order."""
+    container = state.get("container") or {}
+    if container:
+        allowed = set(VERBS_WITH_SCREEN_OPEN)
+        # A crafting grid is the only screen where crafting is possible.
+        if "craft" in str(container.get("screen") or ""):
+            allowed.update(VERBS_NEEDING_CRAFTING_TABLE)
+        return [v for v in ACT_CRITERIA if v in allowed]
+    return [v for v in ACT_CRITERIA if v not in VERBS_NEEDING_A_SCREEN]
+
+
 def build_candidates(state):
     """Every target option in one map, for callers that want the whole set."""
     candidates = {}
@@ -179,7 +203,7 @@ def build_questions(state):
         "act": {
             "type": "choice",
             "instructions": ACT_INSTRUCTIONS,
-            "criteria": dict(ACT_CRITERIA),
+            "criteria": {v: ACT_CRITERIA[v] for v in available_verbs(state)},
         },
         "target_entity": {
             "type": "choice",

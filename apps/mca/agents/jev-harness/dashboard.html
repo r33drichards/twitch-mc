@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev Harness</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a21; --line: #242a34; --ink: #e6e9ef;
+    --dim: #8b93a3; --accent: #7dd3fc; --good: #86efac; --bad: #fca5a5;
+    --bar: #2b3646;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  header {
+    display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0;
+    background: var(--bg); z-index: 2;
+  }
+  h1 { font-size: 14px; margin: 0; letter-spacing: .04em; }
+  .meta { color: var(--dim); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  section > h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim);
+    margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line);
+  }
+  .body { padding: 12px 14px; }
+  .verb { font-size: 20px; color: var(--accent); }
+  .row { display: grid; grid-template-columns: 130px 1fr 52px; gap: 8px; align-items: center; margin: 3px 0; }
+  .track { background: var(--bar); height: 12px; border-radius: 3px; overflow: hidden; }
+  .fill { background: var(--accent); height: 100%; }
+  .fill.pick { background: var(--good); }
+  .num { text-align: right; color: var(--dim); }
+  .noul { display: inline-block; margin-right: 14px; }
+  textarea {
+    width: 100%; min-height: 220px; background: #0c0e12; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px;
+    font: inherit; resize: vertical;
+  }
+  button {
+    background: var(--accent); color: #05202b; border: 0; border-radius: 6px;
+    padding: 7px 14px; font: inherit; font-weight: 600; cursor: pointer; margin-top: 8px;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  pre {
+    margin: 0; white-space: pre-wrap; word-break: break-word;
+    max-height: 380px; overflow: auto; color: #cbd5e1;
+  }
+  details { border-top: 1px solid var(--line); }
+  details:first-of-type { border-top: 0; }
+  summary { cursor: pointer; padding: 8px 14px; color: var(--dim); }
+  summary:hover { color: var(--ink); }
+  details .body { padding-top: 0; }
+  .ok { color: var(--good); } .fail { color: var(--bad); }
+  .saved { color: var(--good); margin-left: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>JEV HARNESS</h1>
+  <span class="meta" id="tick">waiting for a tick…</span>
+  <span class="meta" id="cost"></span>
+  <span class="meta" id="result"></span>
+</header>
+
+<div class="grid">
+  <section>
+    <h2>Decision</h2>
+    <div class="body">
+      <div class="verb" id="verb">—</div>
+      <div class="meta" id="target"></div>
+      <div id="act" style="margin-top:12px"></div>
+      <div id="nouls" style="margin-top:12px"></div>
+      <div id="targets" style="margin-top:12px"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Order — edit and save, picked up next tick</h2>
+    <div class="body">
+      <textarea id="order" spellcheck="false"></textarea>
+      <button id="save">Save order</button>
+      <span class="saved" id="savedNote"></span>
+    </div>
+  </section>
+</div>
+
+<div class="grid" style="grid-template-columns:1fr">
+  <section>
+    <h2>What Jev is given</h2>
+    <div id="state"></div>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let editing = false, lastTick = null;
+$("order").addEventListener("focus", () => editing = true);
+
+function bars(into, probs, picked) {
+  const rows = Object.entries(probs || {}).sort((a, b) => b[1] - a[1]);
+  into.innerHTML = rows.map(([name, p]) => `
+    <div class="row">
+      <span>${name}</span>
+      <span class="track"><span class="fill ${name === picked ? "pick" : ""}"
+        style="width:${Math.max(1, p * 100).toFixed(1)}%"></span></span>
+      <span class="num">${p.toFixed(2)}</span>
+    </div>`).join("");
+}
+
+function section(key, value) {
+  const open = ["self", "inventory", "hazards"].includes(key);
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return `<details ${open ? "open" : ""}>
+    <summary>${key}</summary><div class="body"><pre>${escapeHtml(text)}</pre></div></details>`;
+}
+const escapeHtml = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+async function poll() {
+  try {
+    const live = await (await fetch("/api/live")).json();
+    if (!live || live.waiting) { $("tick").textContent = "waiting for a tick…"; return; }
+    if (live.tick_id !== lastTick) {
+      lastTick = live.tick_id;
+      const a = live.answers || {};
+      $("tick").textContent = `tick ${live.tick_id} · ${live.latency_ms}ms`;
+      const used = live.usage?.input_tokens;
+      $("cost").textContent = used ? `${used} tokens · ~$${(used * 3 * 3600 * 0.042 / 1e6).toFixed(2)}/hr at 3Hz` : "";
+      const r = live.result || {};
+      $("result").innerHTML = r.ok === false
+        ? `<span class="fail">FAILED: ${escapeHtml(r.error || "")}</span>`
+        : `<span class="ok">ok</span> · ${JSON.stringify(live.outcome || {})}`;
+
+      $("verb").textContent = live.verb || "—";
+      $("target").textContent = live.target ? JSON.stringify(live.target) : "no target";
+      if (a.act) bars($("act"), a.act.probabilities, a.act.choice);
+
+      $("nouls").innerHTML = ["arrived", "in_danger", "stuck"]
+        .filter(k => a[k]).map(k => `<span class="noul">${k} <b>${a[k].noul.toFixed(2)}</b></span>`).join("");
+
+      $("targets").innerHTML = Object.keys(a).filter(k => k.startsWith("target_"))
+        .map(k => `<div class="meta">${k}: <b>${a[k].choice}</b> (conf ${a[k].confidence ?? "—"})</div>`).join("");
+
+      const st = live.state || {};
+      $("state").innerHTML = Object.keys(st).map(k => section(k, st[k])).join("");
+      if (!editing && typeof live.order === "string" && $("order").value !== live.order) {
+        $("order").value = live.order;
+      }
+    }
+  } catch (e) { /* harness not running yet */ }
+}
+
+$("save").addEventListener("click", async () => {
+  $("save").disabled = true;
+  await fetch("/api/order", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order: $("order").value })
+  });
+  $("savedNote").textContent = "saved — live next tick";
+  setTimeout(() => $("savedNote").textContent = "", 2500);
+  editing = false; $("save").disabled = false;
+});
+
+(async () => {
+  const o = await (await fetch("/api/order")).json();
+  if (o.order) $("order").value = o.order;
+})();
+setInterval(poll, 500);
+poll();
+</script>
+</body>
+</html>

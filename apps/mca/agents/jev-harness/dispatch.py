@@ -65,6 +65,8 @@ VERB_DURATION_MS = {
     # This exists as its own verb because the model chooses from enumerated
     # options and cannot supply a hold_ms of its own.
     "use_item_hold": 1700,
+    "aim_higher": 0,
+    "aim_lower": 0,
     "hold": 150,
     "done": 150,
     "equip": 0,
@@ -182,6 +184,15 @@ def _install_safety_net() -> None:
 # the dispatcher
 # --------------------------------------------------------------------------
 
+# The player's eyes sit this far above their feet, and a target is aimed at
+# this far above its own feet — the middle of a mob rather than the ground it
+# stands on.
+EYE_HEIGHT = 1.62
+AIM_HEIGHT = 1.0
+# How far one aim_higher / aim_lower moves the head.
+AIM_STEP_DEG = 10.0
+
+
 class Dispatcher:
     """Runs one verb, bounded, and says what happened.
 
@@ -289,10 +300,34 @@ class Dispatcher:
         if yaw is None:
             return False
         params = {"yaw": yaw}
-        if target and target.get("pitch") is not None:
-            params["pitch"] = float(target["pitch"])
+        pitch = self._resolve_pitch(target)
+        if pitch is not None:
+            params["pitch"] = pitch
         self.bridge.rpc("player.set_rotation", params)
         return True
+
+    def _resolve_pitch(self, target: dict | None) -> float | None:
+        """The head angle that looks at `target`, or None if it names no height.
+
+        Positive pitch is downward. The line is drawn from the player's eyes to
+        roughly the middle of the target, since aiming at a mob's feet throws
+        into the floor in front of it. Without this the pitch simply stays where
+        it was, and anything thrown goes wherever the head last pointed.
+        """
+        if not target:
+            return None
+        if target.get("pitch") is not None:
+            return float(target["pitch"])
+        if target.get("y") is None or target.get("x") is None or target.get("z") is None:
+            return None
+        pos = (self._player_state().get("pos") or {})
+        dx = float(target["x"]) - float(pos.get("x", 0.0))
+        dz = float(target["z"]) - float(pos.get("z", 0.0))
+        horizontal = math.hypot(dx, dz)
+        if horizontal == 0.0:
+            return None
+        drop = (float(pos.get("y", 0.0)) + EYE_HEIGHT) - (float(target["y"]) + AIM_HEIGHT)
+        return round(math.degrees(math.atan2(drop, horizontal)), 1)
 
     def _raycast(self) -> dict:
         hit = self.bridge.rpc("world.raycast", {"max": RAYCAST_MAX}) or {}
@@ -316,6 +351,26 @@ class Dispatcher:
     def _retreat(self, target, deadline):
         """Straight back, without turning: the point is to keep facing the threat."""
         self._press_for("back", VERB_DURATION_MS["retreat"])
+
+    def _aim(self, delta_deg):
+        """Tilt the head by `delta_deg`, keeping the current yaw.
+
+        Negative pitch is upward. Thrown items fall on the way to a target, so
+        hitting something at range means aiming above it; how far above is not
+        something this code knows.
+        """
+        state = self._player_state()
+        rot = state.get("rot") or {}
+        yaw = float(rot.get("yaw", 0.0))
+        pitch = float(rot.get("pitch", 0.0)) + delta_deg
+        pitch = max(-90.0, min(90.0, pitch))
+        self.bridge.rpc("player.set_rotation", {"yaw": yaw, "pitch": round(pitch, 1)})
+
+    def _aim_higher(self, target, deadline):
+        self._aim(-AIM_STEP_DEG)
+
+    def _aim_lower(self, target, deadline):
+        self._aim(AIM_STEP_DEG)
 
     def _turn_toward(self, target, deadline):
         if not self._face(target):
@@ -509,6 +564,8 @@ Dispatcher.VERBS = {
     "attack": Dispatcher._attack,
     "use_item": Dispatcher._use_item,
     "use_item_hold": Dispatcher._use_item_hold,
+    "aim_higher": Dispatcher._aim_higher,
+    "aim_lower": Dispatcher._aim_lower,
     "hold": Dispatcher._hold,
     "done": Dispatcher._done,
     "equip": Dispatcher._equip,
