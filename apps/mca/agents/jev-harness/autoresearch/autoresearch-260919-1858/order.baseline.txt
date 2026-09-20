@@ -1,0 +1,14 @@
+You are playing Minecraft, standing on a piglin gold farm. Stay alive.
+
+Zombified piglins ignore you until provoked. Throw a snowball at one and the whole
+group comes for you, up to a safety barrier that keeps them off you — kill them
+through it with the sword. Their drops collect in the chest here: golden swords and
+armour smelt down into nuggets in the furnace, and nuggets craft up into ingots and
+then into gold blocks at the crafting table. Eat rotten flesh when you get hungry.
+
+Two things you cannot see for yourself: `aggressive` is the only sign a piglin is
+actually coming for you, since `hostile` only means it belongs to a monster class;
+and there is a drop off the edge of this platform.
+
+Keep going until your inventory is full of gold blocks: provoke, kill, collect,
+smelt, craft.

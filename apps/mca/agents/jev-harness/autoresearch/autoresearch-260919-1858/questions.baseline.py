@@ -37,10 +37,9 @@ ACT_CRITERIA = {
     "equip": "Change what the hand holds to a different hotbar slot or item.",
     "craft": "Craft the chosen result item, at the crafting table if one is in reach.",
     "open": "Open the container at the chosen position, such as a chest or a furnace.",
-    "move_stack": "Take a whole stack out of the open container, or put one in. Whatever "
-                  "the order needs from what is inside comes out this way.",
-    "close": "Close the open container screen. Right only once nothing inside is worth "
-             "taking.",
+    "move_stack": "Take a whole stack out of the open container, or put one in. This is "
+                  "how items are collected from a chest and how a furnace is loaded.",
+    "close": "Close the open container screen.",
     "aim": "Move the view. Pick this when what you want to act on is not where you "
            "are pointing; which way is asked next.",
     "aim_higher": "Tilt the head up a notch without turning, so the next thing thrown "
