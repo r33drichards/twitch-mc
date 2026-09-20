@@ -7,6 +7,7 @@ every tick, and that no field ships more precision than it can use.
 A fake bridge stands in for Minecraft. Nothing here needs a running game.
 """
 import json
+import re
 import math
 import unittest
 
@@ -100,8 +101,11 @@ class FakeBridge:
     def eval(self, code, timeout_ms=500):
         self.calls.append(code)
         if "canSee" in code:
-            eid = int(code.split("(")[1].split(")")[0])
-            return self.can_see(eid) if callable(self.can_see) else self.can_see
+            # The real call asks about every entity at once and answers with a
+            # table keyed by entity id.
+            ids = [int(n) for n in re.findall(r"canSee\((\d+)\)", code)]
+            return {eid: (self.can_see(eid) if callable(self.can_see) else self.can_see)
+                    for eid in ids}
         return self.raw
 
     def rpc(self, method, params=None, timeout=10.0):
@@ -149,7 +153,7 @@ class TestShape(unittest.TestCase):
     def test_top_level_keys_are_fixed(self):
         s = state.build_state(FakeBridge())
         self.assertEqual(set(s), {"self", "hazards", "in_frame", "out_of_frame", "craftable",
-                                  "inventory", "stations", "container",
+                                  "inventory", "stations", "container", "looking_at",
                                   "order", "errors", "captured_at"})
 
     def test_self_keys_are_fixed(self):
@@ -809,3 +813,36 @@ class TestEntityHealthIsVisible(unittest.TestCase):
         st = state.build_state(FakeBridge(raw=raw))
         desc = (st["in_frame"] + st["out_of_frame"])[0]["desc"]
         self.assertIn("12.5", desc)
+
+
+class TestLookingAt(unittest.TestCase):
+    """What the crosshair is on.
+
+    A player sees where they are pointing; the bot could not. It threw sixteen
+    snowballs at a pitch of 20 degrees into the floor and nothing in state ever
+    said so. This is a sense it was missing, not a hint about aiming.
+    """
+
+    class RaycastBridge(FakeBridge):
+        def __init__(self, hit=None, **kw):
+            super().__init__(**kw)
+            self._hit = hit if hit is not None else {
+                "type": "BLOCK", "x": 5733, "y": 230, "z": 441,
+                "side": "up", "id": "minecraft:bamboo_planks"}
+
+        def rpc(self, method, params=None, timeout=10.0):
+            if method == "world.raycast":
+                return self._hit
+            return super().rpc(method, params, timeout)
+
+    def test_a_block_in_the_crosshair_is_named(self):
+        st = state.build_state(self.RaycastBridge())
+        self.assertEqual(st["looking_at"]["id"], "bamboo_planks")
+
+    def test_the_phrase_says_what_and_how_far(self):
+        st = state.build_state(self.RaycastBridge())
+        self.assertIn("bamboo_planks", st["looking_at"]["desc"])
+
+    def test_empty_air_reads_as_nothing(self):
+        st = state.build_state(self.RaycastBridge(hit={"type": "MISS"}))
+        self.assertIn("nothing", st["looking_at"]["desc"].lower())

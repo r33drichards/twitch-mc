@@ -1029,3 +1029,39 @@ class TestKeyboardLayoutVerbs(unittest.TestCase):
         Dispatcher(bridge, sleep=lambda s: None).execute("open_inventory")
         self.assertTrue(any(c[0] == "rpc" and c[1] == "container.open_inventory"
                             for c in bridge.calls))
+
+
+class TestCycleKeysReadTheRealSlot(unittest.TestCase):
+    """Cycling must start from the slot actually selected.
+
+    player.state carries no hotbarSlot, so the cycle keys defaulted to 0 and
+    every cycle_item_left landed on slot 8 — empty — leaving the hand holding
+    air. Twenty-two ticks of a live run went to that oscillation.
+    """
+
+    class SlotBridge(FakeBridge):
+        def __init__(self, slot):
+            super().__init__(rpc_results=PLAYER_AT_ORIGIN)
+            self.slot = slot
+
+        def eval(self, code, timeout_ms=500):
+            self.calls.append(("eval", code, timeout_ms))
+            if "hotbarSlot" in code:
+                return self.slot
+            return True
+
+    def _selected_after(self, verb, from_slot):
+        bridge = self.SlotBridge(from_slot)
+        Dispatcher(bridge, sleep=lambda s: None).execute(verb)
+        return [c[2].get("slot") for c in bridge.calls
+                if c[0] == "rpc" and c[1] == "player.set_hotbar_slot"][-1]
+
+    def test_next_moves_one_along_from_where_it_is(self):
+        self.assertEqual(self._selected_after("cycle_item_right", from_slot=3), 4)
+
+    def test_previous_moves_one_back_from_where_it_is(self):
+        self.assertEqual(self._selected_after("cycle_item_left", from_slot=3), 2)
+
+    def test_it_wraps_at_the_ends(self):
+        self.assertEqual(self._selected_after("cycle_item_left", from_slot=0), 8)
+        self.assertEqual(self._selected_after("cycle_item_right", from_slot=8), 0)

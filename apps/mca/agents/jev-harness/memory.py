@@ -69,6 +69,19 @@ class EntityMemory:
         return out[: self._max]
 
 
+def _changed_nothing(outcome):
+    """True when every measurement of an action came back zero or empty."""
+    if not outcome:
+        return False
+    for key in ("moved_m", "health_delta", "target_health_delta"):
+        value = outcome.get(key)
+        if isinstance(value, (int, float)) and abs(value) > 0.05:
+            return False
+    if outcome.get("inventory_change"):
+        return False
+    return True
+
+
 class ContainerMemory:
     """What was inside the containers already opened, and how long ago.
 
@@ -164,6 +177,9 @@ class DecisionLog:
             if result.get("ok") is False:
                 reason = result.get("error") or "no reason given"
                 parts.append(f"{r['verb']} {r['age_s']}s ago FAILED: {reason}")
+            elif _changed_nothing(r["outcome"]):
+                # An action with no effect never fails, so it has to say so.
+                parts.append(f"{r['verb']} {r['age_s']}s ago — nothing changed")
             else:
                 parts.append(f"{r['verb']} {r['age_s']}s ago{moved_s}")
         return "; ".join(parts)

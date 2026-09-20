@@ -98,8 +98,9 @@ class TestDecisionLog(unittest.TestCase):
             log.record(verb="advance", target=None, gap_ms=300, outcome={"moved_m": 0.0})
         phrase = log.desc()
         self.assertIn("advance", phrase)
-        self.assertIn("0.0m", phrase)
-        for forbidden in ("stuck", "stalled", "danger", "should"):
+        # The lack of progress is stated as measurement, not as a verdict.
+        self.assertIn("nothing changed", phrase)
+        for forbidden in ("stuck", "stalled", "danger", "should", "try"):
             self.assertNotIn(forbidden, phrase.lower())
 
 
@@ -218,3 +219,41 @@ class TestContainerMemory(unittest.TestCase):
         m = ContainerMemory(clock=lambda: 100.0)
         m.observe(None, self.CHEST)
         self.assertEqual(m.recent(), [])
+
+
+class TestNothingChangedIsSaid(unittest.TestCase):
+    """An action with no effect should read as one.
+
+    `slot_2 0.7s ago` looks identical whether it did something or not, and the
+    model kept choosing it. The outcome already held the evidence; the phrase
+    now says it.
+    """
+
+    NOTHING = {"moved_m": 0.0, "health_delta": 0.0, "inventory_change": {}}
+
+    def test_a_no_op_says_nothing_changed(self):
+        log = DecisionLog(clock=lambda: 100.0)
+        log.record(verb="slot_2", target=None, gap_ms=700, outcome=self.NOTHING,
+                   result={"ok": True, "error": None})
+        self.assertIn("nothing changed", log.desc())
+
+    def test_movement_is_not_called_nothing(self):
+        log = DecisionLog(clock=lambda: 100.0)
+        log.record(verb="advance", target=None, gap_ms=300,
+                   outcome={"moved_m": 1.5, "health_delta": 0.0, "inventory_change": {}},
+                   result={"ok": True, "error": None})
+        self.assertNotIn("nothing changed", log.desc())
+
+    def test_an_inventory_change_is_not_called_nothing(self):
+        log = DecisionLog(clock=lambda: 100.0)
+        log.record(verb="use_item", target=None, gap_ms=300,
+                   outcome={"moved_m": 0.0, "health_delta": 0.0,
+                            "inventory_change": {"snowball": -1}},
+                   result={"ok": True, "error": None})
+        self.assertNotIn("nothing changed", log.desc())
+
+    def test_a_failure_still_reads_as_a_failure(self):
+        log = DecisionLog(clock=lambda: 100.0)
+        log.record(verb="move_stack", target=None, gap_ms=300, outcome=self.NOTHING,
+                   result={"ok": False, "error": "needs a slot"})
+        self.assertIn("FAILED", log.desc())

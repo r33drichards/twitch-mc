@@ -324,6 +324,25 @@ def _screen_name(raw):
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower() or "container"
 
 
+def _build_looking_at(raw, me):
+    """The block under the crosshair, which is where a thrown item goes.
+
+    A player can see this; without it the bot cannot tell aiming at a mob from
+    aiming at the floor two blocks in front of it.
+    """
+    if not isinstance(raw, dict) or raw.get("type") != "BLOCK":
+        return {"id": None, "desc": "looking at nothing within reach"}
+    name = str(raw.get("id", "")).split(":")[-1]
+    dist = None
+    if None not in (me.get("x"), me.get("y"), me.get("z")):
+        dist = round(math.dist([me["x"], me["y"] + 1.62, me["z"]],
+                               [raw.get("x", 0) + 0.5, raw.get("y", 0) + 0.5,
+                                raw.get("z", 0) + 0.5]), 1)
+    where = f", {dist}m away" if dist is not None else ""
+    return {"id": name, "x": raw.get("x"), "y": raw.get("y"), "z": raw.get("z"),
+            "dist": dist, "desc": f"looking at {name}{where}"}
+
+
 def _build_container(raw):
     """The open container screen, or None when nothing is open.
 
@@ -376,6 +395,28 @@ def _read_rpc(bridge, method, params=None):
         return None, f"{type(exc).__name__}: {exc}"
 
 
+def _in_view_cone(e, me):
+    """Whether the bearing alone puts this entity on screen."""
+    d = describe_entity(etype=e.get("type", "?"), ex=e.get("x", 0.0), ey=e.get("y", 0.0),
+                        ez=e.get("z", 0.0), px=me["x"], py=me["y"], pz=me["z"],
+                        pyaw=me["yaw"])
+    return d["in_frame"]
+
+
+def _batch_can_see(bridge, ids):
+    """`api:canSee` for several entities in a single eval."""
+    if not ids:
+        return {}
+    body = ", ".join(f"[{int(i)}]=api:canSee({int(i)})" for i in ids)
+    try:
+        got = bridge.eval("return {" + body + "}")
+    except Exception:  # noqa: BLE001 - a failed read is not a decision
+        return {}
+    if not isinstance(got, dict):
+        return {}
+    return {int(k): bool(v) for k, v in got.items()}
+
+
 def _describe(bridge, entities, me):
     """One dict per entity, split by what the player can actually see.
 
@@ -393,6 +434,12 @@ def _describe(bridge, entities, me):
     otherwise be blind to it. A client that has not been told either bit
     reports null, and null says nothing in the phrase rather than "no".
     """
+    # One call for every visibility check, rather than one call each. Each eval
+    # blocks Minecraft's client thread, so a tick that asked about six entities
+    # stalled rendering six separate times.
+    cone_ids = [e["id"] for e in entities
+                if _in_view_cone(e, me)][:MAX_DESCRIBED]
+    sight = _batch_can_see(bridge, cone_ids)
     in_frame, out_of_frame = [], []
     for e in entities[:MAX_DESCRIBED]:
         d = describe_entity(etype=e["type"], ex=e["x"], ey=e["y"], ez=e["z"],
@@ -400,8 +447,8 @@ def _describe(bridge, entities, me):
         visible = d["in_frame"]
         desc = d["desc"]
         if visible:
-            # Cone says yes; ask the game whether a wall disagrees.
-            visible = bool(bridge.eval(f"return api:canSee({e['id']})"))
+            # Cone says yes; the batched sight check says whether a wall disagrees.
+            visible = bool(sight.get(e["id"]))
             if not visible:
                 desc += " (out of sight)"
         aggressive = e.get("aggressive")
@@ -488,6 +535,8 @@ def build_state(bridge, order=None) -> dict:
     if blocks is None and scan_err is None:
         scan_err = "world.blocks_around returned no blocks"
 
+    crosshair, _ = _read_rpc(bridge, "world.raycast", {"max": 6.0})
+
     screen, screen_err = _read_rpc(bridge, "container.state")
 
     recipes, recipes_err = _read_rpc(bridge, "craft.recipes", {"craftable_only": True})
@@ -500,6 +549,7 @@ def build_state(bridge, order=None) -> dict:
         "inventory": inventory,
         "stations": stations,
         "container": _build_container(screen),
+        "looking_at": _build_looking_at(crosshair, me),
         "craftable": _build_craftable(recipes),
         "order": order,
         "errors": {"self": _probe_error(me_raw),

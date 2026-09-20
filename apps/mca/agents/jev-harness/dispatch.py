@@ -413,13 +413,24 @@ class Dispatcher:
     def _select_slot(self, index):
         self.bridge.rpc("player.set_hotbar_slot", {"slot": index})
 
+    def _selected_slot(self) -> int:
+        """The hotbar slot in hand.
+
+        player.state does not report it, so ask the script api, which does.
+        Defaulting to 0 made every cycle_item_left land on slot 8.
+        """
+        try:
+            return int(self.bridge.eval("return api:hotbarSlot()") or 0)
+        except (TypeError, ValueError):
+            return 0
+
     def _hotbar_next(self, target, deadline):
-        slot = (int(self._player_state().get("hotbarSlot", 0) or 0) + 1) % HOTBAR_SIZE
-        self.bridge.rpc("player.set_hotbar_slot", {"slot": slot})
+        self.bridge.rpc("player.set_hotbar_slot",
+                        {"slot": (self._selected_slot() + 1) % HOTBAR_SIZE})
 
     def _hotbar_prev(self, target, deadline):
-        slot = (int(self._player_state().get("hotbarSlot", 0) or 0) - 1) % HOTBAR_SIZE
-        self.bridge.rpc("player.set_hotbar_slot", {"slot": slot})
+        self.bridge.rpc("player.set_hotbar_slot",
+                        {"slot": (self._selected_slot() - 1) % HOTBAR_SIZE})
 
     def _jump(self, target, deadline):
         self._press_for("jump", VERB_DURATION_MS["jump"])

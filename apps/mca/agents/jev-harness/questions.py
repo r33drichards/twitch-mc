@@ -158,10 +158,17 @@ def place_candidates(state):
 
 
 def item_candidates(state):
-    """Items carried, and results the recipe book says can be made."""
+    """Items carried, and results the recipe book says can be made.
+
+    What is already in hand is left out: equipping it changes nothing, and
+    seven ticks in a row once went to re-equipping a held sword.
+    """
     candidates = {}
     inventory = state.get("inventory") or {}
+    held = ((inventory.get("held") or {}).get("id") or "").split(":")[-1]
     for item, count in (inventory.get("counts") or {}).items():
+        if item.split(":")[-1] == held:
+            continue
         candidates[item] = f"{item.split(':')[-1]} carried, {count} of them"
     for recipe in (state.get("craftable") or [])[:8]:
         result = recipe.get("result")
@@ -193,6 +200,16 @@ def slot_candidates(state):
 # one. Offering `attack` through an open chest is offering a fiction: the swing
 # cannot land and the model has no way to know that. This is the candidate rule
 # again — the model can only pick what it is shown.
+# The semantic set: the verbs that mean something rather than naming a key.
+# Kept apart from FULL_KEYBOARD_VERBS so neither mode can offer the other's.
+SEMANTIC_VERBS = (
+    "advance", "retreat", "strafe_left", "strafe_right",
+    "turn_left", "turn_right", "aim_higher", "aim_lower",
+    "jump", "mine_front", "place_block", "attack",
+    "use_item", "use_item_hold", "equip", "open", "move_stack", "close",
+    "craft", "hold", "done",
+)
+
 VERBS_WITH_SCREEN_OPEN = ("move_stack", "close", "hold", "done")
 VERBS_NEEDING_CRAFTING_TABLE = ("craft",)
 VERBS_NEEDING_A_SCREEN = ("move_stack", "close", "craft")
@@ -225,15 +242,29 @@ def available_verbs(state, controls="semantic"):
         # A screen being open changes nothing here: the keys still work, and
         # closing one is `close`, which this set deliberately does not include
         # because opening one is not in it either.
-        return [v for v in FULL_KEYBOARD_VERBS if v in ACT_CRITERIA]
+        #
+        # The key for the slot already selected is left out: pressing it cannot
+        # change anything, and a verb that does nothing never fails, so nothing
+        # would ever catch the loop pressing it.
+        inventory = state.get("inventory") or {}
+        held_slot = (inventory.get("held") or {}).get("slot")
+        selected_key = f"slot_{int(held_slot) + 1}" if held_slot is not None else None
+        # Slots holding nothing are no better than the one already selected.
+        # With no hotbar detail, hide nothing: never remove a key on ignorance.
+        hotbar = inventory.get("hotbar")
+        filled = ({f"slot_{int(e['slot']) + 1}" for e in hotbar if e.get("slot") is not None}
+                  if hotbar else None)
+        return [v for v in FULL_KEYBOARD_VERBS
+                if v in ACT_CRITERIA and v != selected_key
+                and (filled is None or not v.startswith("slot_") or v in filled)]
     container = state.get("container") or {}
     if container:
         allowed = set(VERBS_WITH_SCREEN_OPEN)
         # A crafting grid is the only screen where crafting is possible.
         if "craft" in str(container.get("screen") or ""):
             allowed.update(VERBS_NEEDING_CRAFTING_TABLE)
-        return [v for v in ACT_CRITERIA if v in allowed]
-    return [v for v in ACT_CRITERIA if v not in VERBS_NEEDING_A_SCREEN]
+        return [v for v in SEMANTIC_VERBS if v in allowed]
+    return [v for v in SEMANTIC_VERBS if v not in VERBS_NEEDING_A_SCREEN]
 
 
 def build_candidates(state):
@@ -376,7 +407,7 @@ _TARGET_STATE_KEYS = {
 # probability spread flat, while these six cost 2006 and answered the right verb
 # at 0.34. Phase two gets its own slice, so nothing is lost — only the noise.
 ACT_STATE_KEYS = ("order", "self", "inventory", "hazards", "in_frame",
-                  "recent_decisions_desc")
+                  "looking_at", "recent_decisions_desc")
 
 
 def act_state(state):
