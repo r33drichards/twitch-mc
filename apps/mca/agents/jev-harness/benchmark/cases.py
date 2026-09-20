@@ -35,8 +35,17 @@ def _counts(state):
     return (state.get("inventory") or {}).get("counts") or {}
 
 
-def _hostiles(state):
-    return [e for e in (state.get("in_frame") or []) if e.get("hostile")]
+def _hostiles(state, anywhere=False):
+    """Hostiles in view, or anywhere the bot knows about.
+
+    The aiming case needs the second sense. Requiring a hostile *in frame*
+    before saying "you should aim" was a contradiction: the reason to aim is
+    that the target is not where you are looking.
+    """
+    seen = list(state.get("in_frame") or [])
+    if anywhere:
+        seen += list(state.get("out_of_frame") or []) + list(state.get("seen_recently") or [])
+    return [e for e in seen if e.get("hostile")]
 
 
 def classify(state):
@@ -72,7 +81,7 @@ def classify(state):
         return ("snowballs_carried_but_not_held", SELECT_VERBS,
                 "throwing needs the snowball in hand first", "keyboard")
 
-    if held == "snowball" and _hostiles(state):
+    if held == "snowball" and _hostiles(state, anywhere=True):
         if looking:
             return ("aimed_at_a_block_with_snowball_held", AIM_VERBS,
                     "the crosshair is on a block, so the throw would hit it",
@@ -85,7 +94,10 @@ def classify(state):
 
 def build(limit_per_case=8):
     seen, cases = {}, []
-    for path in sorted(glob.glob(os.path.join(TRACES, "*.jsonl"))):
+    # Newest traces first. Filling each quota from the oldest files meant a
+    # freshly recorded situation could never enter the benchmark, which is how
+    # the aiming case stayed at zero examples while it was being recorded.
+    for path in sorted(glob.glob(os.path.join(TRACES, "*.jsonl")), reverse=True):
         for line in open(path):
             try:
                 row = json.loads(line)
