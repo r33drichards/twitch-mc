@@ -25,8 +25,13 @@ def rot_after(verb, yaw=90.0, pitch=0.0):
 
 class TestTheSetItself(unittest.TestCase):
     def test_only_real_keys_are_offered(self):
+        # A subset, not equality: affordances drop keys that cannot do anything
+        # in the moment — the selected slot's own key, empty slots, a single
+        # right-click into an empty view. What matters is that nothing outside
+        # the game's key map ever appears.
         offered = available_verbs({"container": None}, controls="keyboard")
-        self.assertEqual(set(offered), set(FULL_KEYBOARD_VERBS))
+        self.assertTrue(set(offered).issubset(set(FULL_KEYBOARD_VERBS)))
+        self.assertTrue(set(offered), "some keys must always be offered")
 
     def test_no_semantic_verbs_survive_in_this_mode(self):
         offered = set(available_verbs({"container": None}, controls="keyboard"))

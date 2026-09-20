@@ -168,11 +168,14 @@ class TestPhaseOneStateIsSlim(unittest.TestCase):
         for needed in ("order", "self", "inventory", "hazards", "in_frame"):
             self.assertIn(needed, slim)
 
-    def test_an_open_screen_is_mentioned_in_one_line(self):
+    def test_an_open_screen_arrives_as_a_line_plus_a_tally(self):
+        # The prose alone was not enough to decide whether to take anything:
+        # live, the bot read "158 snowball" and closed the box. Deciding means
+        # comparing contents against the order, and a tally compares better.
         from questions import act_state
         slim = act_state(STATE)
-        self.assertIsInstance(slim["container"], str)
-        self.assertIn("chest", slim["container"])
+        self.assertIn("chest", slim["container"]["desc"])
+        self.assertIsInstance(slim["container"]["holds"], dict)
 
     def test_nothing_open_means_no_container_key(self):
         from questions import act_state

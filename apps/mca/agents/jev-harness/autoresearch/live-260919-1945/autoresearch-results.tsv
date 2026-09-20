@@ -1,0 +1,8 @@
+iter	metric	delta	status	change
+0	0.0000		baseline	shulker never offered as a place candidate
+1	0.1000	+0.1000	KEEP	place candidates one-per-kind: the shulker was never offered
+2	0.4000	+0.3000	KEEP	act_state gets the container contents as counts, not just prose
+3	0.4000	+0.0000	KEEP*	act_state gets nearby creatures (unproven: within noise)
+4	0.4000	+0.0000	DISCARD	order: a thrown snowball flies where you look
+5	0.0000	-0.4000	DISCARD	no single right-click into an empty view (aimed more, reached the shulker less)
+final	0.2667		n=3	kept 1-3; 1/3 runs reach four of five milestones

@@ -170,22 +170,11 @@ def place_candidates(state):
     since, so offering them again only invites the same open-and-close loop.
     """
     searched = _recently_searched(state)
-    # One of each kind before a second of any kind. Taking the nearest eight
-    # offered five chests, two hoppers and a furnace, and dropped the shulker
-    # box the order was naming — a candidate that is never listed cannot be
-    # chosen, however clearly the order asks for it.
-    stations = [s for s in _stations(state) if isinstance(s, dict)]
-    ranked, ordered = {}, []
-    for st in sorted(stations, key=lambda s: s.get("dist", 0)):
-        key = f"{st['x']},{st['y']},{st['z']}" if "x" in st else st.get("id")
-        if not key or str(key) in searched:
-            continue
-        rank = ranked.get(st.get("id"), 0)
-        ranked[st["id"]] = rank + 1
-        ordered.append((rank, st.get("dist", 0), str(key), st.get("desc") or str(key)))
     candidates = {}
-    for _, _, key, desc in sorted(ordered)[:8]:
-        candidates[key] = desc
+    for st in _stations(state)[:8]:
+        key = f"{st['x']},{st['y']},{st['z']}" if "x" in st else st.get("id")
+        if key and str(key) not in searched:
+            candidates[str(key)] = st.get("desc") or str(key)
     for e in list(state.get("in_frame") or [])[:4]:
         candidates[str(e["id"])] = e.get("desc") or e.get("type") or "entity"
     candidates["none"] = "Nothing listed is worth heading toward or opening."
@@ -494,13 +483,8 @@ def act_state(state):
     slim = {k: state.get(k) for k in ACT_STATE_KEYS if k in state}
     container = state.get("container")
     if container:
-        # The prose line plus what is actually inside, as counts. Deciding
-        # whether to take anything means comparing the contents against what
-        # the order needs, and a sentence is harder to compare than a tally.
-        slim["container"] = {
-            "desc": container.get("desc") or "a container is open",
-            "holds": container.get("counts") or {},
-        }
+        # One line is enough to know a screen is up; the slots belong to phase two.
+        slim["container"] = container.get("desc") or "a container is open"
     # A few phrases for what is worth walking to or opening. Without these the
     # act question cannot see that any container exists — a live run held still
     # for twenty-four ticks with an unsearched shulker four metres away, because
@@ -520,15 +504,6 @@ def act_state(state):
     worth_going_to = [text for _, _, text in sorted(worth_going_to)[:5]]
     if worth_going_to:
         slim["nearby"] = worth_going_to
-    # The nearest few creatures, in view or not. Standing at a container the
-    # bot faces a wall, so everything alive is out of frame and the act
-    # question could see none of it — no reason to ever turn around.
-    creatures = [e for e in (list(state.get("in_frame") or [])
-                             + list(state.get("out_of_frame") or []))
-                 if isinstance(e, dict)]
-    creatures.sort(key=lambda e: e.get("dist", 999))
-    if creatures:
-        slim["creatures"] = [e.get("desc") or e.get("type", "?") for e in creatures[:3]]
     return slim
 
 

@@ -520,15 +520,6 @@ def act_state(state):
     worth_going_to = [text for _, _, text in sorted(worth_going_to)[:5]]
     if worth_going_to:
         slim["nearby"] = worth_going_to
-    # The nearest few creatures, in view or not. Standing at a container the
-    # bot faces a wall, so everything alive is out of frame and the act
-    # question could see none of it — no reason to ever turn around.
-    creatures = [e for e in (list(state.get("in_frame") or [])
-                             + list(state.get("out_of_frame") or []))
-                 if isinstance(e, dict)]
-    creatures.sort(key=lambda e: e.get("dist", 999))
-    if creatures:
-        slim["creatures"] = [e.get("desc") or e.get("type", "?") for e in creatures[:3]]
     return slim
 
 

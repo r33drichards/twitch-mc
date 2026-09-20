@@ -54,15 +54,13 @@ def reset(bridge, verbose=True):
         if verbose:
             print("  reset: respawned after a death")
     time.sleep(0.3)
-    bridge.rpc("chat.send", {"text": f"/clear {name} minecraft:snowball"})
-    time.sleep(0.6)
-    # Count the shulker's stock while standing next to it: a container cannot
-    # be opened from across the platform, and reading it after the teleport
-    # reported an empty box that was actually full.
+    # Put the snowballs back rather than destroying them. Clearing the player
+    # deleted every snowball a run had collected, and eight runs drained the
+    # farm's shulker from 158 to nothing.
     sx, sy, sz = SHULKER
     bridge.rpc("chat.send", {"text": f"/tp {name} {sx + 1.5} {sy - 1} {sz + 0.5} -90 0"})
-    time.sleep(0.9)
-    stock = _shulker_snowballs(bridge)
+    time.sleep(1.0)
+    stock = _return_snowballs(bridge)
 
     x, y, z = random.choice(SPAWNS)
     yaw = random.choice((-180, -135, -90, -45, 0, 45, 90, 135))
@@ -76,11 +74,22 @@ def reset(bridge, verbose=True):
     return carried == 0 and stock > 0
 
 
-def _shulker_snowballs(bridge):
-    """How many snowballs the shulker holds, leaving it as it was found."""
+def _return_snowballs(bridge):
+    """Give the shulker back every snowball the player carries, and count it.
+
+    The player must start each run with none, but deleting them would spend the
+    farm's supply one run at a time.
+    """
     x, y, z = SHULKER
     bridge.rpc("container.open", {"x": x, "y": y, "z": z})
-    time.sleep(0.8)
+    time.sleep(0.9)
+    state = bridge.rpc("container.state") or {}
+    for slot in (state.get("playerSlots") or []):
+        if str(slot.get("id", "")).endswith("snowball"):
+            bridge.rpc("container.click",
+                       {"slot": slot["slot"], "button": 0, "mode": "QUICK_MOVE"})
+            time.sleep(0.35)
+    time.sleep(0.5)
     state = bridge.rpc("container.state") or {}
     total = sum(s.get("count", 0) for s in (state.get("containerSlots") or [])
                 if str(s.get("id", "")).endswith("snowball"))
