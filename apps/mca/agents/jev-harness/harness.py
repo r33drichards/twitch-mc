@@ -42,6 +42,7 @@ VERB_TARGET_QUESTION = {
     "equip": "target_item",
     "craft": "target_item",
     "move_stack": "target_slot",
+    "aim": "target_look",
     "place_block": "target_place",
     "mine_front": "target_place",
 }
@@ -55,6 +56,8 @@ def target_for(verb, answers, state):
     choice = (answers.get(question) or {}).get("choice")
     if not choice or choice == "none":
         return None
+    if question == "target_look":
+        return {"look": choice}
     if question == "target_slot":
         # A slot is a bare number and means nothing to entity or position lookup.
         try:

@@ -78,6 +78,7 @@ VERB_DURATION_MS = {
     "drop_item": 0,
     "walk_forward": 300,
     "walk_backward": 300,
+    "aim": 0,
     "sneak": 300,
     "sprint": 400,
     "open_inventory": 0,
@@ -396,6 +397,20 @@ class Dispatcher:
     def _drop_item(self, target, deadline):
         raise VerbError("drop_item has no key on the bridge yet")
 
+    def _aim_chosen(self, target, deadline):
+        """Move the view the way the aim question chose.
+
+        The direction is a decision, not geometry: this only presses the key
+        that was named.
+        """
+        name = (target or {}).get("look")
+        if not name:
+            raise VerbError("aim needs a direction from the aim question")
+        handler = Dispatcher.VERBS.get(str(name))
+        if handler is None or not str(name).startswith("look"):
+            raise VerbError(f"aim was given {name!r}, which is not a look direction")
+        handler(self, None, deadline)
+
     def _sneak(self, target, deadline):
         self._press_for("sneak", VERB_DURATION_MS["sneak"])
 
@@ -641,6 +656,7 @@ Dispatcher.VERBS = {
     "drop_item": Dispatcher._drop_item,
     "walk_forward": Dispatcher._walk_forward,
     "walk_backward": Dispatcher._walk_backward,
+    "aim": Dispatcher._aim_chosen,
     "sneak": Dispatcher._sneak,
     "sprint": Dispatcher._sprint,
     "open_inventory": Dispatcher._open_inventory,

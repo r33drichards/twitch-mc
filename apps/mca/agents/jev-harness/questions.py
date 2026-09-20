@@ -40,6 +40,8 @@ ACT_CRITERIA = {
     "move_stack": "Take a whole stack out of the open container, or put one in. This is "
                   "how items are collected from a chest and how a furnace is loaded.",
     "close": "Close the open container screen.",
+    "aim": "Move the view. Pick this when what you want to act on is not where you "
+           "are pointing; which way is asked next.",
     "aim_higher": "Tilt the head up a notch without turning, so the next thing thrown "
                   "or used goes higher than where you are looking now.",
     "aim_lower": "Tilt the head down a notch without turning.",
@@ -207,7 +209,7 @@ SEMANTIC_VERBS = (
     "turn_left", "turn_right", "aim_higher", "aim_lower",
     "jump", "mine_front", "place_block", "attack",
     "use_item", "use_item_hold", "equip", "open", "move_stack", "close",
-    "craft", "hold", "done",
+    "craft", "aim", "hold", "done",
 )
 
 VERBS_WITH_SCREEN_OPEN = ("move_stack", "close", "hold", "done")
@@ -221,14 +223,21 @@ VERBS_NEEDING_A_SCREEN = ("move_stack", "close", "craft")
 # Minecraft's Full Keyboard Gameplay map, and nothing outside it. Every entry is
 # a key a player presses; there is no verb here that means "craft this" or "open
 # that", because there is no such key.
+# The look keys are not offered individually. Choosing a direction to move the
+# view is a different question from choosing what to do, and mixed into a
+# thirty-eight way choice it lost every time: look_right sat at 0.02 while
+# use_item took 0.54. `aim` is one verb here; which way is asked after.
+AIM_KEYS = (
+    "look_left", "look_right", "look_up", "look_down",
+    "look_up_left", "look_up_right", "look_down_left", "look_down_right",
+    "look_left_smooth", "look_right_smooth", "look_up_slight", "look_down_slight",
+    "look_center",
+)
+
 FULL_KEYBOARD_VERBS = (
     "walk_forward", "walk_backward", "strafe_left", "strafe_right",
     "jump", "sneak", "sprint",
-    "look_up_slight", "look_down_slight",
-    "look_up", "look_down", "look_left", "look_right",
-    "look_up_left", "look_up_right", "look_down_left", "look_down_right",
-    "look_up_smooth", "look_down_smooth", "look_left_smooth", "look_right_smooth",
-    "look_center",
+    "aim",
     *(f"slot_{n}" for n in range(1, 10)),
     "cycle_item_left", "cycle_item_right",
     "attack", "use_item", "use_item_hold", "inventory", "drop_item",
@@ -367,6 +376,29 @@ def verbs_without_criteria():
 # options, so the verb is chosen first and its target second. Code still decides
 # nothing — it only asks the question belonging to the verb the model picked.
 
+AIM_DESCRIPTIONS = {
+    "look_left": "45 degrees left.",
+    "look_right": "45 degrees right.",
+    "look_up": "45 degrees up.",
+    "look_down": "45 degrees down.",
+    "look_up_left": "45 degrees up and left.",
+    "look_up_right": "45 degrees up and right.",
+    "look_down_left": "45 degrees down and left.",
+    "look_down_right": "45 degrees down and right.",
+    "look_left_smooth": "10 degrees left, a small correction.",
+    "look_right_smooth": "10 degrees right, a small correction.",
+    "look_up_slight": "15 degrees up, a small correction.",
+    "look_down_slight": "15 degrees down, a small correction.",
+    "look_center": "Level the view back to the horizon.",
+}
+
+
+def look_candidates(state):
+    """The directions the view can move."""
+    return dict(AIM_DESCRIPTIONS)
+
+
+
 TARGET_QUESTION_FOR_VERB = {
     "attack": "target_entity",
     "open": "target_place",
@@ -377,6 +409,7 @@ TARGET_QUESTION_FOR_VERB = {
     # use_item and use_item_hold take no target: they are the right-click, and
     # what they use is whatever equip already put in the hand.
     "move_stack": "target_slot",
+    "aim": "target_look",
 }
 
 _TARGET_BUILDERS = {
@@ -384,6 +417,7 @@ _TARGET_BUILDERS = {
     "target_place": place_candidates,
     "target_item": item_candidates,
     "target_slot": slot_candidates,
+    "target_look": look_candidates,
 }
 
 _TARGET_SUBJECT = {
@@ -391,6 +425,7 @@ _TARGET_SUBJECT = {
     "target_place": "block position or creature",
     "target_item": "item",
     "target_slot": "slot of the open container",
+    "target_look": "direction",
 }
 
 # Only the parts of state the second question can actually use.
@@ -399,6 +434,7 @@ _TARGET_STATE_KEYS = {
     "target_place": ("self", "order", "hazards", "stations", "in_frame"),
     "target_item": ("self", "order", "inventory", "craftable"),
     "target_slot": ("self", "order", "inventory", "container"),
+    "target_look": ("self", "order", "looking_at", "in_frame", "out_of_frame"),
 }
 
 
