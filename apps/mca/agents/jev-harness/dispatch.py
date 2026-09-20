@@ -26,6 +26,7 @@ Four independent paths, any one of which is enough.
 """
 import atexit
 import contextlib
+import json
 import math
 import signal
 import time
@@ -39,6 +40,11 @@ from geometry import normalize_deg, relative_bearing
 LATCHING_KEYS = ("forward", "back", "left", "right", "jump",
                  "sneak", "sprint", "attack", "use")
 
+# Container operations fired back-to-back are silently dropped: the screen
+# and the server's menu sync need a beat between clicks. Every container
+# click therefore pays this before the next verb can start.
+CONTAINER_PACE_MS = 300
+
 # The price of each verb, in milliseconds. This is the dispatcher's own
 # config, and state.py ships it to Jev as `tick.verb_duration_ms`, so what the
 # model is told an action costs cannot drift from what it actually costs.
@@ -50,20 +56,78 @@ VERB_DURATION_MS = {
     "mine_front": 1000,
     "place_block": 0,
     "attack": 0,
+    # A bare use_item is one instantaneous interaction. A `hold_ms` target
+    # adds exactly the number the model itself supplied, so the figure the
+    # model is shipped still describes everything the dispatcher spends on
+    # its own account.
     "use_item": 0,
+    # Vanilla food needs ~1.6s of held right-click; a single click eats nothing.
+    # This exists as its own verb because the model chooses from enumerated
+    # options and cannot supply a hold_ms of its own.
+    "use_item_hold": 1700,
     "hold": 150,
     "done": 150,
+    "equip": 0,
+    # craft.item's own client-thread sleeps: 300ms to open a table, then
+    # 250ms to place the recipe and 250ms to shift-click the result.
+    "craft": 1000,
+    # The GUI opens asynchronously after the server replies; this is how long
+    # `open` will keep asking before calling it a failure.
+    "open": 1000,
+    "move_stack": CONTAINER_PACE_MS,
+    "close": 0,
 }
 
 # One attackBlock tick does not break a block; mine_front keeps swinging at
 # the same position until its bound runs out.
 MINE_POLL_S = 0.05
 
+# How often `open` asks whether the container screen has appeared yet.
+CONTAINER_POLL_S = 0.1
+
+# The hotbar is the first nine slots of the inventory `api:inventoryJson()`
+# reports, and the only ones `player.set_hotbar_slot` can select.
+HOTBAR_SIZE = 9
+
 RAYCAST_MAX = 5.0
 
 
 class VerbError(Exception):
     """A verb could not be carried out. Reported as data, never raised outward."""
+
+
+def _as_int(value, name: str) -> int:
+    """A target field as a whole number, or a reportable failure."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise VerbError(f"{name} must be a whole number, got {value!r}") from None
+
+
+def _json_list(raw, what: str) -> list:
+    """The mod's JSON-string payloads; an already-parsed list is fine too."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            raise VerbError(f"{what} was not JSON: {raw!r:.80}") from None
+    if not isinstance(raw, list):
+        raise VerbError(f"{what} was not a list: {type(raw).__name__}")
+    return raw
+
+
+def _same_item(stack_id, wanted: str) -> bool:
+    """Match an item id, forgiving the vanilla namespace.
+
+    state.py strips `minecraft:` before the model ever sees an id — `held`
+    arrives as `snowball` — so an answer of `snowball` has to find
+    `minecraft:snowball`. This is spelling, not a judgement about the world.
+    """
+    if not isinstance(stack_id, str):
+        return False
+    if stack_id == wanted:
+        return True
+    return ":" not in wanted and stack_id == "minecraft:" + wanted
 
 
 # --------------------------------------------------------------------------
@@ -292,8 +356,140 @@ class Dispatcher:
             raise VerbError(f"attack needs a numeric entity id, got {raw!r}") from None
         self.bridge.eval(f"return api:attackEntity({entity_id})")
 
+    def _use_item_hold(self, target, deadline):
+        """Right-click held down: eating, drinking, drawing a bow, raising a shield.
+
+        The hold defaults to the table's own figure so `tick.verb_duration_ms`
+        stays true; a target may still override it.
+        """
+        hold = dict(target or {})
+        hold.setdefault("hold_ms", VERB_DURATION_MS["use_item_hold"])
+        return self._use_item(hold, deadline)
+
     def _use_item(self, target, deadline):
-        self.bridge.eval("return api:useItem()")
+        """One interaction, or the right-click held down for `hold_ms`.
+
+        Eating is about 1.6 seconds of held right-click and a single click
+        achieves nothing, so the held form exists. It goes through the same
+        `_held` context manager as every other key, which means a crash
+        inside the sleep cannot leave `use` latched: the context manager
+        releases it, and `execute()`'s finally releases it again.
+        """
+        raw = (target or {}).get("hold_ms")
+        if raw is None:
+            self.bridge.eval("return api:useItem()")
+            return
+        try:
+            hold_ms = float(raw)
+        except (TypeError, ValueError):
+            raise VerbError(f"use_item hold_ms must be milliseconds, "
+                            f"got {raw!r}") from None
+        if hold_ms < 0:
+            raise VerbError(f"use_item hold_ms must not be negative, got {hold_ms:g}")
+        if hold_ms == 0:
+            self.bridge.eval("return api:useItem()")
+            return
+        self._press_for("use", hold_ms)
+
+    # -- inventory, crafting and containers ---------------------------------
+
+    def _hotbar_slot_of(self, item: str) -> int:
+        """The hotbar slot holding `item`, or a reportable failure.
+
+        Nothing is substituted when the item is elsewhere or absent. A slot
+        the model can select is either there or it is not, and "not" is an
+        answer the model gets to see rather than a fallback taken for it.
+        """
+        stacks = _json_list(self.bridge.eval("return api:inventoryJson()"), "inventory")
+        matches = sorted(
+            (s for s in stacks
+             if isinstance(s, dict) and _same_item(s.get("id"), item)),
+            key=lambda s: s.get("slot", HOTBAR_SIZE))
+        for stack in matches:
+            slot = stack.get("slot")
+            if isinstance(slot, int) and 0 <= slot < HOTBAR_SIZE:
+                return slot
+        if matches:
+            elsewhere = ", ".join(str(s.get("slot")) for s in matches)
+            raise VerbError(f"{item} is in the inventory (slot {elsewhere}) "
+                            f"but not the hotbar")
+        raise VerbError(f"{item} is not in the inventory")
+
+    def _equip(self, target, deadline):
+        """Select a hotbar slot, by number or by what is sitting in it."""
+        target = target or {}
+        if target.get("slot") is not None:
+            slot = _as_int(target["slot"], "equip slot")
+            if not 0 <= slot < HOTBAR_SIZE:
+                raise VerbError(f"equip slot must be 0-{HOTBAR_SIZE - 1}, got {slot}")
+        elif target.get("item") is not None:
+            slot = self._hotbar_slot_of(str(target["item"]))
+        else:
+            raise VerbError(f"equip needs a slot (0-{HOTBAR_SIZE - 1}) or an item id")
+        self.bridge.rpc("player.set_hotbar_slot", {"slot": slot})
+
+    def _craft(self, target, deadline):
+        """Craft by result item id.
+
+        The recipe comes from the player's own recipe book on the Java side,
+        so no recipe is named here. `use_max` fills the grid as full as the
+        inventory allows; the table coordinates are passed through only when
+        all three are present, because `craft.item` needs the whole position
+        to open a table and ignores a partial one.
+        """
+        target = target or {}
+        item = target.get("item")
+        if isinstance(item, str):
+            item = item.strip()
+        if not item:
+            raise VerbError("craft needs an item id")
+        params = {"item": str(item)}
+        if target.get("use_max") is not None:
+            params["use_max"] = bool(target["use_max"])
+        if all(target.get(k) is not None for k in ("x", "y", "z")):
+            params.update(self._block_pos(target))
+        self.bridge.rpc("craft.item", params)
+
+    def _open(self, target, deadline):
+        """Ask for a container, then wait for the screen to actually exist.
+
+        The screen opens asynchronously after the server replies, and a
+        container op fired before it does is silently dropped. So the verb is
+        not finished until `container.state` says open.
+        """
+        target = target or {}
+        if any(target.get(k) is None for k in ("x", "y", "z")):
+            raise VerbError("open needs x, y and z")
+        at = self._block_pos(target)
+        self.bridge.rpc("container.open", at)
+        while True:
+            if (self.bridge.rpc("container.state") or {}).get("open"):
+                return
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                break
+            self._sleep(min(CONTAINER_POLL_S, remaining))
+        raise VerbError(f"container at ({at['x']},{at['y']},{at['z']}) did not "
+                        f"report open within {VERB_DURATION_MS['open']}ms")
+
+    def _move_stack(self, target, deadline):
+        """Shift-click one slot: a whole stack across the open container.
+
+        Loading a furnace, taking its output and withdrawing from a chest are
+        all this one call with a different slot number. Which slot is the
+        model's business; the pacing afterwards is the dispatcher's.
+        """
+        target = target or {}
+        if target.get("slot") is None:
+            raise VerbError("move_stack needs a slot")
+        slot = _as_int(target["slot"], "move_stack slot")
+        button = _as_int(target.get("button", 0), "move_stack button")
+        self.bridge.rpc("container.click",
+                        {"slot": slot, "button": button, "mode": "QUICK_MOVE"})
+        self._sleep(CONTAINER_PACE_MS / 1000.0)
+
+    def _close(self, target, deadline):
+        self.bridge.rpc("container.close")
 
     def _hold(self, target, deadline):
         self._sleep(VERB_DURATION_MS["hold"] / 1000.0)
@@ -312,6 +508,12 @@ Dispatcher.VERBS = {
     "place_block": Dispatcher._place_block,
     "attack": Dispatcher._attack,
     "use_item": Dispatcher._use_item,
+    "use_item_hold": Dispatcher._use_item_hold,
     "hold": Dispatcher._hold,
     "done": Dispatcher._done,
+    "equip": Dispatcher._equip,
+    "craft": Dispatcher._craft,
+    "open": Dispatcher._open,
+    "move_stack": Dispatcher._move_stack,
+    "close": Dispatcher._close,
 }

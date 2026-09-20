@@ -1,0 +1,114 @@
+"""The question set: the only place the model is asked anything."""
+import unittest
+
+from dispatch import Dispatcher
+from questions import ACT_CRITERIA, build_questions, build_candidates, ORDER_QUESTIONS
+
+
+STATE = {
+    "self": {"desc": "lmoik at (5733,231,440), 18.9/20 health"},
+    "in_frame": [{"id": 11, "desc": "zombified_piglin — ahead, 4° left, 4.4m away, level"}],
+    "out_of_frame": [{"id": 62, "desc": "ghast — behind, 40m away (last seen 3.0s ago)"}],
+    "order": "kill the piglins",
+}
+
+
+class TestActCriteria(unittest.TestCase):
+    def test_every_verb_the_dispatcher_can_run_has_a_criterion(self):
+        # A verb with no criterion is a verb the model can never choose, which
+        # silently removes an escape route.
+        missing = set(Dispatcher.VERBS) - set(ACT_CRITERIA)
+        self.assertEqual(missing, set(), f"verbs with no criterion: {missing}")
+
+    def test_criteria_describe_situations_not_thresholds_for_code(self):
+        for verb, text in ACT_CRITERIA.items():
+            self.assertTrue(text.strip(), f"{verb} has an empty criterion")
+            self.assertGreater(len(text), 20, f"{verb}'s criterion is too thin to choose on")
+
+
+class TestBuildCandidates(unittest.TestCase):
+    def test_lists_visible_and_remembered_entities(self):
+        c = build_candidates(STATE)
+        self.assertIn("11", c)
+        self.assertIn("62", c)
+
+    def test_always_offers_a_no_target_option(self):
+        self.assertIn("none", build_candidates(STATE))
+
+    def test_candidate_text_distinguishes_the_options(self):
+        c = build_candidates(STATE)
+        self.assertNotEqual(c["11"], c["62"])
+        self.assertIn("piglin", c["11"])
+
+
+class TestBuildQuestions(unittest.TestCase):
+    def test_asks_act_and_target_in_one_batch(self):
+        q = build_questions(STATE)
+        self.assertEqual(q["act"]["type"], "choice")
+        self.assertEqual(q["target"]["type"], "choice")
+
+    def test_act_offers_exactly_the_dispatcher_verbs(self):
+        q = build_questions(STATE)
+        self.assertTrue(set(Dispatcher.VERBS).issubset(set(q["act"]["criteria"])))
+
+    def test_supporting_nouls_ride_along(self):
+        q = build_questions(STATE)
+        for name in ("arrived", "in_danger", "stuck"):
+            self.assertEqual(q[name]["type"], "noul")
+
+    def test_danger_criterion_states_a_concrete_threshold(self):
+        # "immediate danger" with no number produced a 0.44 non-answer in testing.
+        text = str(build_questions(STATE)["in_danger"]["criteria"])
+        self.assertRegex(text, r"\d")
+
+    def test_act_instructions_tell_the_model_what_a_verb_costs_in_time(self):
+        q = build_questions(STATE)
+        self.assertIn("verb_duration_ms", q["act"]["instructions"])
+
+
+class TestOrderIntake(unittest.TestCase):
+    def test_order_intake_is_a_separate_question_set(self):
+        self.assertIn("order_kind", ORDER_QUESTIONS)
+        self.assertEqual(ORDER_QUESTIONS["order_kind"]["type"], "choice")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestCandidatesCoverVerbParameters(unittest.TestCase):
+    """A verb is useless if its parameter cannot be named.
+
+    The model picks one option from an enumerated list, so equipping snowballs,
+    crafting ingots and opening the furnace are only possible if those things
+    appear as candidates. Code enumerates what exists; the model picks.
+    """
+
+    STATE_WITH_STUFF = {
+        "self": {"desc": "x"},
+        "in_frame": [{"id": 11, "desc": "piglin — ahead, 4.4m"}],
+        "out_of_frame": [],
+        "inventory": {"counts": {"minecraft:snowball": 16, "minecraft:rotten_flesh": 24},
+                      "desc": "holding sword; 16 snowball, 24 rotten_flesh"},
+        "craftable": [{"result": "minecraft:gold_ingot", "desc": "gold_ingot from 9 nuggets"}],
+        # state.py ships stations as {near, more, desc}, not a bare list.
+        "stations": {"near": [{"id": "furnace", "x": 5733, "y": 232, "z": 436,
+                               "desc": "furnace at (5733,232,436) — ahead, 4.0m, in reach"}],
+                     "more": {"chest": 17},
+                     "desc": "32 interactable blocks within 5 blocks"},
+    }
+
+    def test_carried_items_are_offered(self):
+        c = build_candidates(self.STATE_WITH_STUFF)
+        self.assertIn("minecraft:snowball", c)
+
+    def test_craftable_results_are_offered(self):
+        c = build_candidates(self.STATE_WITH_STUFF)
+        self.assertIn("minecraft:gold_ingot", c)
+
+    def test_station_positions_are_offered_as_coordinates(self):
+        c = build_candidates(self.STATE_WITH_STUFF)
+        self.assertIn("5733,232,436", c)
+
+    def test_entities_still_offered_alongside(self):
+        self.assertIn("11", build_candidates(self.STATE_WITH_STUFF))

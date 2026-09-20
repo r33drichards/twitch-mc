@@ -259,8 +259,17 @@ public final class CraftingHandlers {
                 Thread.sleep(250);
                 // Slot 0 is the result slot in both the 2x2 inventory menu and the
                 // 3x3 crafting menu.
+                int held = countItem(p, itemId);
                 mc.gameMode.handleContainerInput(syncId, 0, 0, ContainerInput.QUICK_MOVE, p);
                 Thread.sleep(250);
+                if (countItem(p, itemId) == held) {
+                    // QUICK_MOVE can silently no-op on a crafting RESULT slot — it is a
+                    // phantom stack, not a normal one. Fall back to picking the result
+                    // up and putting it down in a free slot. Closing the screen with
+                    // the result still on the cursor discards it, so never skip this.
+                    takeResultByHand(mc, p, syncId);
+                    Thread.sleep(250);
+                }
             }
             int after = countItem(p, itemId);
 
@@ -274,5 +283,25 @@ public final class CraftingHandlers {
             Thread.currentThread().interrupt();
             throw new RuntimeException("interrupted", e);
         }
+    }
+
+    /**
+     * Pick the crafting result off slot 0 and drop it into the first empty slot.
+     * Used when a shift-click on the result slot does nothing, which happens
+     * because the result is a phantom stack rather than a real one.
+     */
+    private static void takeResultByHand(Minecraft mc, net.minecraft.client.player.LocalPlayer p, int syncId)
+            throws InterruptedException {
+        mc.gameMode.handleContainerInput(syncId, 0, 0, ContainerInput.PICKUP, p);
+        Thread.sleep(120);
+        for (int slot = 1; slot < p.containerMenu.slots.size(); slot++) {
+            if (p.containerMenu.slots.get(slot).getItem().isEmpty()) {
+                mc.gameMode.handleContainerInput(syncId, slot, 0, ContainerInput.PICKUP, p);
+                return;
+            }
+        }
+        // No free slot: put it back rather than leaving it on the cursor, where
+        // closing the screen would destroy it.
+        mc.gameMode.handleContainerInput(syncId, 0, 0, ContainerInput.PICKUP, p);
     }
 }

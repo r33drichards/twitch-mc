@@ -5,6 +5,7 @@ assert on the call sequence itself: that release-all precedes every verb,
 that a bounded press is press-sleep-release, and that no path leaves a key
 latched down.
 """
+import json
 import os
 import subprocess
 import sys
@@ -101,8 +102,9 @@ def make(bridge=None, **kw):
     return d, bridge, clock
 
 
-ALL_VERBS = ["advance", "retreat", "turn_toward", "jump", "mine_front",
-             "place_block", "attack", "use_item", "hold", "done"]
+ALL_VERBS = ["advance", "retreat", "turn_toward", "jump", "mine_front", "use_item_hold",
+             "place_block", "attack", "use_item", "hold", "done",
+             "equip", "craft", "open", "move_stack", "close"]
 
 
 # --------------------------------------------------------------------------
@@ -266,8 +268,11 @@ class TestVerbTable(unittest.TestCase):
     def test_durations_match_the_design(self):
         self.assertEqual(VERB_DURATION_MS, {
             "advance": 300, "retreat": 300, "turn_toward": 0, "jump": 150,
+            "use_item_hold": 1700,
             "mine_front": 1000, "place_block": 0, "attack": 0, "use_item": 0,
-            "hold": 150, "done": 150})
+            "hold": 150, "done": 150,
+            "equip": 0, "craft": 1000, "open": 1000, "move_stack": 300,
+            "close": 0})
 
     def test_every_verb_has_a_handler_and_a_duration(self):
         self.assertEqual(sorted(Dispatcher.VERBS), sorted(VERB_DURATION_MS))
@@ -458,5 +463,428 @@ class TestAttackAndUse(unittest.TestCase):
         self.assertIn("api:useItem()", [c[1] for c in bridge.calls if c[0] == "eval"][0])
 
 
+# --------------------------------------------------------------------------
+# held use: eating takes ~1.6s of held right-click, a click does nothing
+# --------------------------------------------------------------------------
+
+class TestUseItemHold(unittest.TestCase):
+    def test_a_hold_presses_use_sleeps_and_releases(self):
+        d, bridge, clock = make()
+        out = d.execute("use_item", {"hold_ms": 1700})
+        self.assertTrue(out["ok"])
+        self.assertEqual(bridge.verb_key_calls(), [("use", "press"), ("use", "release")])
+        self.assertEqual(clock.sleeps, [1.7])
+        self.assertEqual(out["duration_ms"], 1700)
+
+    def test_a_hold_does_not_also_eval_use_item(self):
+        d, bridge, _ = make()
+        d.execute("use_item", {"hold_ms": 1700})
+        self.assertEqual([c for c in bridge.calls if c[0] == "eval"], [])
+
+    def test_no_hold_keeps_the_instantaneous_behaviour(self):
+        for target in (None, {}, {"hold_ms": None}, {"hold_ms": 0}):
+            with self.subTest(target=target):
+                d, bridge, clock = make()
+                out = d.execute("use_item", target)
+                self.assertTrue(out["ok"])
+                self.assertIn("api:useItem()",
+                              [c[1] for c in bridge.calls if c[0] == "eval"][0])
+                self.assertEqual(bridge.verb_key_calls(), [])
+                self.assertEqual(clock.sleeps, [])
+                self.assertEqual(out["duration_ms"], 0)
+
+    def test_a_non_numeric_hold_is_reported_and_presses_nothing(self):
+        d, bridge, _ = make()
+        out = d.execute("use_item", {"hold_ms": "a while"})
+        self.assertFalse(out["ok"])
+        self.assertIn("hold_ms", out["error"])
+        self.assertEqual(bridge.verb_key_calls(), [])
+        self.assertEqual([c for c in bridge.calls if c[0] == "eval"], [])
+
+    def test_a_negative_hold_is_reported(self):
+        d, bridge, _ = make()
+        out = d.execute("use_item", {"hold_ms": -5})
+        self.assertFalse(out["ok"])
+        self.assertIn("hold_ms", out["error"])
+        self.assertEqual(bridge.verb_key_calls(), [])
+
+    def test_a_crash_mid_hold_still_releases_use(self):
+        """The eating equivalent of the advance crash test.
+
+        A 1.6s hold is the longest the player ever latches a key. If the sleep
+        dies in the middle of it, `use` must not survive the call.
+        """
+        class Boom(Exception):
+            pass
+
+        def exploding_sleep(_seconds):
+            raise Boom("the loop died holding use")
+
+        clock = FakeClock()
+        bridge = FakeBridge()
+        d = Dispatcher(bridge, sleep=exploding_sleep, clock=clock.monotonic)
+        out = d.execute("use_item", {"hold_ms": 1700})
+        self.assertFalse(out["ok"])
+        self.assertIn("Boom", out["error"])
+        self.assertIn(("use", "press"), bridge.key_calls())
+        self.assertEqual(bridge.held_keys(), [])
+        # released by the context manager, then again by execute()'s finally
+        self.assertGreaterEqual(
+            len([k for k in bridge.key_calls() if k == ("use", "release")]), 2)
+
+
+# --------------------------------------------------------------------------
+# equip
+# --------------------------------------------------------------------------
+
+def inventory(*stacks):
+    """An inventoryJson payload: (slot, id) pairs as the mod serializes them."""
+    return json.dumps([{"slot": s, "id": i, "count": 1} for s, i in stacks])
+
+
+class TestEquip(unittest.TestCase):
+    def test_a_slot_is_selected_directly(self):
+        d, bridge, clock = make()
+        out = d.execute("equip", {"slot": 3})
+        self.assertTrue(out["ok"])
+        self.assertEqual([c[1] for c in bridge.verb_calls()], ["player.set_hotbar_slot"])
+        self.assertEqual(bridge.verb_calls()[0][2], {"slot": 3})
+        self.assertEqual(clock.sleeps, [])
+        self.assertEqual(out["duration_ms"], 0)
+
+    def test_a_slot_outside_the_hotbar_is_reported(self):
+        for slot in (-1, 9, 36):
+            with self.subTest(slot=slot):
+                d, bridge, _ = make()
+                out = d.execute("equip", {"slot": slot})
+                self.assertFalse(out["ok"])
+                self.assertIn("slot", out["error"])
+                self.assertNotIn("player.set_hotbar_slot", bridge.methods())
+
+    def test_a_non_numeric_slot_is_reported(self):
+        d, bridge, _ = make()
+        out = d.execute("equip", {"slot": "left hand"})
+        self.assertFalse(out["ok"])
+        self.assertNotIn("player.set_hotbar_slot", bridge.methods())
+
+    def test_an_item_is_resolved_to_the_hotbar_slot_holding_it(self):
+        bridge = FakeBridge()
+        bridge.eval_result = inventory((0, "minecraft:golden_sword"),
+                                       (4, "minecraft:snowball"),
+                                       (20, "minecraft:rotten_flesh"))
+        d, _, _ = make(bridge)
+        out = d.execute("equip", {"item": "minecraft:snowball"})
+        self.assertTrue(out["ok"])
+        self.assertIn("api:inventoryJson()",
+                      [c[1] for c in bridge.calls if c[0] == "eval"][0])
+        self.assertEqual([c for c in bridge.calls
+                          if c[1] == "player.set_hotbar_slot"][0][2], {"slot": 4})
+
+    def test_an_item_only_outside_the_hotbar_is_a_reported_failure(self):
+        bridge = FakeBridge()
+        bridge.eval_result = inventory((20, "minecraft:snowball"))
+        d, _, _ = make(bridge)
+        out = d.execute("equip", {"item": "minecraft:snowball"})
+        self.assertFalse(out["ok"])
+        self.assertIn("hotbar", out["error"])
+        self.assertIn("snowball", out["error"])
+        self.assertNotIn("player.set_hotbar_slot", bridge.methods())
+
+    def test_an_item_the_player_does_not_carry_is_a_reported_failure(self):
+        bridge = FakeBridge()
+        bridge.eval_result = inventory((0, "minecraft:golden_sword"))
+        d, _, _ = make(bridge)
+        out = d.execute("equip", {"item": "minecraft:snowball"})
+        self.assertFalse(out["ok"])
+        self.assertIn("snowball", out["error"])
+        self.assertNotIn("player.set_hotbar_slot", bridge.methods())
+
+    def test_a_short_id_matches_the_vanilla_namespace(self):
+        """State ships `held: "snowball"`, so the model may well answer that."""
+        bridge = FakeBridge()
+        bridge.eval_result = inventory((6, "minecraft:snowball"))
+        d, _, _ = make(bridge)
+        out = d.execute("equip", {"item": "snowball"})
+        self.assertTrue(out["ok"])
+        self.assertEqual([c for c in bridge.calls
+                          if c[1] == "player.set_hotbar_slot"][0][2], {"slot": 6})
+
+    def test_an_already_parsed_inventory_is_tolerated(self):
+        bridge = FakeBridge()
+        bridge.eval_result = [{"slot": 2, "id": "minecraft:snowball", "count": 16}]
+        d, _, _ = make(bridge)
+        out = d.execute("equip", {"item": "minecraft:snowball"})
+        self.assertTrue(out["ok"])
+        self.assertEqual([c for c in bridge.calls
+                          if c[1] == "player.set_hotbar_slot"][0][2], {"slot": 2})
+
+    def test_the_lowest_hotbar_slot_wins_when_an_item_is_held_twice(self):
+        bridge = FakeBridge()
+        bridge.eval_result = inventory((7, "minecraft:snowball"),
+                                       (2, "minecraft:snowball"))
+        d, _, _ = make(bridge)
+        d.execute("equip", {"item": "minecraft:snowball"})
+        self.assertEqual([c for c in bridge.calls
+                          if c[1] == "player.set_hotbar_slot"][0][2], {"slot": 2})
+
+    def test_a_slot_wins_over_an_item_and_skips_the_inventory_read(self):
+        bridge = FakeBridge()
+        bridge.eval_result = inventory((4, "minecraft:snowball"))
+        d, _, _ = make(bridge)
+        out = d.execute("equip", {"slot": 1, "item": "minecraft:snowball"})
+        self.assertTrue(out["ok"])
+        self.assertEqual([c for c in bridge.calls if c[0] == "eval"], [])
+        self.assertEqual([c for c in bridge.calls
+                          if c[1] == "player.set_hotbar_slot"][0][2], {"slot": 1})
+
+    def test_neither_a_slot_nor_an_item_is_reported(self):
+        d, bridge, _ = make()
+        out = d.execute("equip", None)
+        self.assertFalse(out["ok"])
+        self.assertIn("slot", out["error"])
+        self.assertIn("item", out["error"])
+        self.assertEqual(bridge.verb_calls(), [])
+
+
+# --------------------------------------------------------------------------
+# craft
+# --------------------------------------------------------------------------
+
+class TestCraft(unittest.TestCase):
+    def test_passes_the_item_through_and_nothing_else(self):
+        d, bridge, clock = make()
+        out = d.execute("craft", {"item": "minecraft:gold_ingot"})
+        self.assertTrue(out["ok"])
+        self.assertEqual([c[1] for c in bridge.verb_calls()], ["craft.item"])
+        self.assertEqual(bridge.verb_calls()[0][2], {"item": "minecraft:gold_ingot"})
+        self.assertEqual(clock.sleeps, [])
+
+    def test_use_max_is_passed_through(self):
+        d, bridge, _ = make()
+        d.execute("craft", {"item": "minecraft:gold_block", "use_max": True})
+        self.assertEqual(bridge.verb_calls()[0][2],
+                         {"item": "minecraft:gold_block", "use_max": True})
+
+    def test_count_is_not_forwarded(self):
+        """One craft.item pass per verb keeps the duration table honest.
+
+        craft.item sleeps 500ms per iteration on the client thread, so a
+        count of N would cost N times what `tick.verb_duration_ms` promises.
+        `use_max` already yields a whole stack in a single pass.
+        """
+        d, bridge, _ = make()
+        d.execute("craft", {"item": "minecraft:gold_ingot", "count": 16})
+        self.assertEqual(bridge.verb_calls()[0][2], {"item": "minecraft:gold_ingot"})
+
+    def test_table_coordinates_are_passed_through_as_ints(self):
+        d, bridge, _ = make()
+        d.execute("craft", {"item": "minecraft:gold_ingot", "use_max": True,
+                            "x": 118.7, "y": 64.0, "z": -44.2})
+        self.assertEqual(bridge.verb_calls()[0][2],
+                         {"item": "minecraft:gold_ingot", "use_max": True,
+                          "x": 118, "y": 64, "z": -45})
+
+    def test_partial_coordinates_are_not_sent(self):
+        """craft.item only opens a table when it has all three."""
+        d, bridge, _ = make()
+        d.execute("craft", {"item": "minecraft:gold_ingot", "x": 118, "z": -44})
+        self.assertEqual(bridge.verb_calls()[0][2], {"item": "minecraft:gold_ingot"})
+
+    def test_without_an_item_it_is_a_reported_failure(self):
+        d, bridge, _ = make()
+        out = d.execute("craft", {"use_max": True})
+        self.assertFalse(out["ok"])
+        self.assertIn("item", out["error"])
+        self.assertNotIn("craft.item", bridge.methods())
+
+    def test_a_bridge_failure_is_data(self):
+        bridge = FakeBridge({"craft.item": RuntimeError("missing_ingredients_for:x")})
+        d, _, _ = make(bridge)
+        out = d.execute("craft", {"item": "minecraft:gold_ingot"})
+        self.assertFalse(out["ok"])
+        self.assertIn("missing_ingredients", out["error"])
+
+
+# --------------------------------------------------------------------------
+# containers: open, move_stack, close
+# --------------------------------------------------------------------------
+
+class OpensAfter(FakeBridge):
+    """container.state reports closed until the Nth poll."""
+
+    def __init__(self, polls):
+        super().__init__()
+        self.polls = polls
+        self.seen = 0
+
+    def rpc(self, method, params=None, timeout=10.0):
+        if method == "container.state":
+            self.seen += 1
+            self.calls.append(("rpc", method, dict(params or {})))
+            return {"open": self.seen >= self.polls}
+        return super().rpc(method, params, timeout)
+
+
+class TestOpen(unittest.TestCase):
+    def test_requests_then_polls_until_the_gui_reports_open(self):
+        bridge = OpensAfter(1)
+        d, _, clock = make(bridge)
+        out = d.execute("open", {"x": 118, "y": 64, "z": -44})
+        self.assertTrue(out["ok"])
+        self.assertEqual([c[1] for c in bridge.verb_calls()],
+                         ["container.open", "container.state"])
+        self.assertEqual(bridge.verb_calls()[0][2], {"x": 118, "y": 64, "z": -44})
+        self.assertEqual(clock.sleeps, [])
+
+    def test_keeps_polling_while_the_gui_is_still_closed(self):
+        bridge = OpensAfter(4)
+        d, _, clock = make(bridge)
+        out = d.execute("open", {"x": 1, "y": 2, "z": 3})
+        self.assertTrue(out["ok"])
+        self.assertEqual(len([c for c in bridge.calls if c[1] == "container.state"]), 4)
+        self.assertEqual(len([c for c in bridge.calls if c[1] == "container.open"]), 1)
+        self.assertGreater(sum(clock.sleeps), 0.0)
+
+    def test_a_gui_that_never_opens_is_reported_within_the_bound(self):
+        bridge = OpensAfter(10_000)
+        d, _, clock = make(bridge)
+        out = d.execute("open", {"x": 1, "y": 2, "z": 3})
+        self.assertFalse(out["ok"])
+        self.assertIn("open", out["error"])
+        # It spends the whole bound and not a poll more.
+        self.assertAlmostEqual(sum(clock.sleeps),
+                               VERB_DURATION_MS["open"] / 1000.0, places=6)
+        self.assertLessEqual(out["duration_ms"], VERB_DURATION_MS["open"])
+        self.assertGreater(len([c for c in bridge.calls if c[1] == "container.state"]), 1)
+
+    def test_coordinates_are_floored_to_a_block(self):
+        bridge = OpensAfter(1)
+        d, _, _ = make(bridge)
+        d.execute("open", {"x": 118.9, "y": 64.2, "z": -44.1})
+        self.assertEqual([c for c in bridge.calls if c[1] == "container.open"][0][2],
+                         {"x": 118, "y": 64, "z": -45})
+
+    def test_without_coordinates_it_is_a_reported_failure(self):
+        d, bridge, _ = make()
+        out = d.execute("open", {"x": 1, "z": 3})
+        self.assertFalse(out["ok"])
+        self.assertNotIn("container.open", bridge.methods())
+
+
+class TestMoveStack(unittest.TestCase):
+    def test_shift_clicks_the_slot_and_paces_itself(self):
+        d, bridge, clock = make()
+        out = d.execute("move_stack", {"slot": 5})
+        self.assertTrue(out["ok"])
+        self.assertEqual([c[1] for c in bridge.verb_calls()], ["container.click"])
+        self.assertEqual(bridge.verb_calls()[0][2],
+                         {"slot": 5, "button": 0, "mode": "QUICK_MOVE"})
+        self.assertEqual(clock.sleeps, [0.3])
+        self.assertEqual(out["duration_ms"], 300)
+
+    def test_the_button_is_passed_through(self):
+        d, bridge, _ = make()
+        d.execute("move_stack", {"slot": 5, "button": 1})
+        self.assertEqual(bridge.verb_calls()[0][2],
+                         {"slot": 5, "button": 1, "mode": "QUICK_MOVE"})
+
+    def test_slot_zero_is_a_real_slot(self):
+        """The furnace output and the 2x2 result both live at slot 0."""
+        d, bridge, _ = make()
+        out = d.execute("move_stack", {"slot": 0})
+        self.assertTrue(out["ok"])
+        self.assertEqual(bridge.verb_calls()[0][2],
+                         {"slot": 0, "button": 0, "mode": "QUICK_MOVE"})
+
+    def test_without_a_slot_it_is_a_reported_failure(self):
+        d, bridge, _ = make()
+        out = d.execute("move_stack", None)
+        self.assertFalse(out["ok"])
+        self.assertIn("slot", out["error"])
+        self.assertNotIn("container.click", bridge.methods())
+
+    def test_a_non_numeric_slot_is_reported(self):
+        d, bridge, _ = make()
+        out = d.execute("move_stack", {"slot": "the coal one"})
+        self.assertFalse(out["ok"])
+        self.assertNotIn("container.click", bridge.methods())
+
+    def test_a_closed_container_is_data_not_an_exception(self):
+        bridge = FakeBridge({"container.click": RuntimeError("no_container")})
+        d, _, _ = make(bridge)
+        out = d.execute("move_stack", {"slot": 5})
+        self.assertFalse(out["ok"])
+        self.assertIn("no_container", out["error"])
+
+
+class TestClose(unittest.TestCase):
+    def test_closes_and_is_instant(self):
+        d, bridge, clock = make()
+        out = d.execute("close")
+        self.assertTrue(out["ok"])
+        self.assertEqual([c[1] for c in bridge.verb_calls()], ["container.close"])
+        self.assertEqual(bridge.verb_calls()[0][2], {})
+        self.assertEqual(clock.sleeps, [])
+        self.assertEqual(out["duration_ms"], 0)
+
+    def test_a_bridge_failure_is_data(self):
+        bridge = FakeBridge({"container.close": ConnectionError("bridge down")})
+        d, _, _ = make(bridge)
+        out = d.execute("close")
+        self.assertFalse(out["ok"])
+        self.assertIn("bridge down", out["error"])
+
+
+# --------------------------------------------------------------------------
+# the rule the whole module exists to keep
+# --------------------------------------------------------------------------
+
+class TestNoVerbDecidesAnything(unittest.TestCase):
+    def test_craft_runs_whatever_it_is_handed(self):
+        """No "not enough nuggets, skip it": the RPC is always sent."""
+        bridge = FakeBridge()
+        bridge.eval_result = inventory()          # empty inventory
+        d, _, _ = make(bridge)
+        d.execute("craft", {"item": "minecraft:gold_block", "use_max": True})
+        self.assertIn("craft.item", bridge.methods())
+
+    def test_move_stack_does_not_check_what_is_in_the_slot(self):
+        d, bridge, _ = make()
+        d.execute("move_stack", {"slot": 31})
+        self.assertEqual([c[1] for c in bridge.verb_calls()], ["container.click"])
+
+    def test_use_item_holds_even_with_a_full_food_bar(self):
+        d, bridge, clock = make(FakeBridge(PLAYER_AT_ORIGIN))
+        out = d.execute("use_item", {"hold_ms": 1600})
+        self.assertTrue(out["ok"])
+        self.assertNotIn("player.state", bridge.methods())
+        self.assertEqual(clock.sleeps, [1.6])
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUseItemHoldVerb(unittest.TestCase):
+    """Eating needs the button held, and the model can only name a verb.
+
+    `use_item` accepts a hold_ms, but the model chooses from enumerated
+    candidates and has no way to say "hold it for 1700ms". Without its own verb,
+    eating is unreachable no matter what the order says.
+    """
+
+    def test_use_item_hold_is_a_verb(self):
+        self.assertIn("use_item_hold", Dispatcher.VERBS)
+
+    def test_it_presses_and_releases_the_use_key(self):
+        bridge = FakeBridge()
+        Dispatcher(bridge, sleep=lambda s: None).execute("use_item_hold")
+        calls = [(c[2].get("key"), c[2].get("action"))
+                 for c in bridge.calls if c[0] == "rpc" and c[1] == "player.press_key"]
+        self.assertIn(("use", "press"), calls)
+        self.assertIn(("use", "release"), calls)
+        self.assertEqual(bridge.held_keys(), [])
+
+    def test_its_duration_is_long_enough_to_eat(self):
+        # Vanilla food takes ~1.6s of held right-click.
+        self.assertGreaterEqual(VERB_DURATION_MS["use_item_hold"], 1600)
