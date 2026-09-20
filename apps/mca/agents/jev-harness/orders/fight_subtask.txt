@@ -1,0 +1,8 @@
+You are playing Minecraft on a piglin gold farm. Stay alive.
+
+Zombified piglins are killed with a sword, and they drop the gold this farm is
+for. `has_weapon` says whether you are armed.
+
+There is a drop off the edge of this platform.
+
+Done once you have killed a piglin.

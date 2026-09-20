@@ -95,6 +95,9 @@ WORKFLOW_CRITERIA = {
     "eat": "Eat something you are carrying, restoring food.",
     "acquire_weapon": "Get a weapon into your hand, wherever one has to be found — "
                       "the pack, or the containers around you. Ends armed.",
+    "attack_piglins": "Take up the spot the farm is fought from and swing at whatever "
+                      "is in reach there. Ends having fought, or having found nothing "
+                      "close enough to hit.",
     "wait": "Do nothing for a moment.",
     "done": "The order is finished.",
 }

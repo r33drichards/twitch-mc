@@ -11,7 +11,7 @@ from actions import Actions, ActionError
 
 class WorkflowDispatcher:
     VERBS = ("go_to", "open", "take", "close", "equip", "acquire_weapon",
-             "throw_at", "attack", "eat", "wait", "done")
+             "attack_piglins", "throw_at", "attack", "eat", "wait", "done")
 
     def __init__(self, bridge, sleep=time.sleep):
         self.actions = Actions(bridge, sleep=sleep)
@@ -62,6 +62,8 @@ class WorkflowDispatcher:
             return actions.attack(self._entity(target))
         if verb == "acquire_weapon":
             return actions.acquire_weapon()
+        if verb == "attack_piglins":
+            return actions.attack_piglins()
         if verb in ("wait", "done"):
             return actions.wait()
         raise ActionError(f"no such action: {verb}")

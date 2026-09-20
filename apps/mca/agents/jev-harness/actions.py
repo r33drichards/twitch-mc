@@ -20,7 +20,13 @@ from geometry import relative_bearing
 
 EYE_HEIGHT = 1.62
 AIM_HEIGHT = 1.0          # aim at a mob's middle, not the ground under it
-REACH = 4.0               # container and melee reach, kept under the server's 4.5
+REACH = 4.0               # container reach, kept under the server's 4.5
+MELEE_REACH = 3.0         # the server refuses a swing from further than this
+# Where the farm is fought from: on the platform, behind the barrier, with a
+# sightline to the piglins. The spots nearer the mobs have no line of sight —
+# swinging there hits the barrier.
+SAFE_SPOT = {"x": 5731, "y": 231, "z": 439}
+MAX_SWINGS = 12
 WALK_TICK_MS = 250
 MAX_WALK_STEPS = 12
 CONTAINER_PACE_S = 0.35   # the server drops container ops fired faster than this
@@ -288,6 +294,55 @@ class Actions:
         found.sort(key=lambda b: math.dist([me["x"], me["y"], me["z"]],
                                            [b["x"] + 0.5, b["y"] + 0.5, b["z"] + 0.5]))
         return [{"x": b["x"], "y": b["y"], "z": b["z"]} for b in found]
+
+    def attack_piglins(self, spot=None, max_swings=MAX_SWINGS):
+        """Stand where the farm is fought from, and swing at what comes.
+
+        Ends either with a piglin killed or with nothing in reach to hit, and
+        says which. Repeating it is safe: the walk is a no-op once you are
+        already standing there.
+        """
+        spot = spot or dict(SAFE_SPOT)
+        moved = self.approach(spot, reach=1.2)
+        killed, swings, last = 0, 0, None
+        while swings < max_swings:
+            target = self._nearest_reachable_hostile()
+            if not target:
+                break
+            last = target.get("type")
+            self.face(target)
+            self._sleep(0.1)
+            before = target.get("health")
+            self.bridge.eval(f"return api:attackEntity({int(target['id'])})")
+            swings += 1
+            self._sleep(0.45)
+            after = self._entity(target["id"])
+            if after is None:
+                killed += 1
+            elif before is not None and (after.get("health") or 0) <= 0:
+                killed += 1
+        return _ok("fought" if swings else "nothing in reach",
+                   changed=bool(swings or moved.get("changed")),
+                   swings=swings, killed=killed, at=last,
+                   standing_at=f"{spot['x']},{spot['y']},{spot['z']}")
+
+    def _nearest_reachable_hostile(self):
+        """The closest hostile inside melee reach that is actually visible."""
+        me = self._self()
+        found = json.loads(self.bridge.eval("return api:entitiesJson(12)"))
+        candidates = []
+        for e in found:
+            if not e.get("hostile") or not e.get("living"):
+                continue
+            distance = math.dist([me["x"], me["y"], me["z"]],
+                                 [e["x"], e["y"], e["z"]])
+            if distance > MELEE_REACH:
+                continue
+            if not self.bridge.eval(f"return api:canSee({int(e['id'])})"):
+                continue
+            candidates.append((distance, e))
+        candidates.sort(key=lambda pair: pair[0])
+        return candidates[0][1] if candidates else None
 
     def wait(self):
         self._sleep(0.2)

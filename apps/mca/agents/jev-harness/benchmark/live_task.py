@@ -27,7 +27,8 @@ from bridge import Bridge  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 HARNESS = os.path.dirname(HERE)
 ORDERS = {"snowball": os.path.join(HARNESS, "orders", "snowball_subtask.txt"),
-          "weapon": os.path.join(HARNESS, "orders", "weapon_subtask.txt")}
+          "weapon": os.path.join(HARNESS, "orders", "weapon_subtask.txt"),
+          "fight": os.path.join(HARNESS, "orders", "fight_subtask.txt")}
 # Where the farm keeps its dropped swords; the reset puts borrowed ones back.
 WEAPON_CHEST = (5730, 230, 439)
 # The farm's own shulker box, which already holds the snowball supply. Nothing
@@ -176,6 +177,28 @@ def weapon_milestones(trace_path):
     return {"chose_to_arm": chose, "weapon_in_pack": carried, "weapon_in_hand": held}
 
 
+def fight_milestones(trace_path):
+    """Did it arm itself, take up the spot, swing, and kill something?"""
+    armed = fought = swung = killed = False
+    for line in open(trace_path):
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        inv = (row.get("state") or {}).get("inventory") or {}
+        if _is_weapon(((inv.get("held") or {}).get("id") or "")):
+            armed = True
+        result = row.get("result") or {}
+        if row.get("verb") == "attack_piglins" and result.get("ok"):
+            fought = True
+            if (result.get("swings") or 0) > 0:
+                swung = True
+            if (result.get("killed") or 0) > 0:
+                killed = True
+    return {"armed_itself": armed, "took_the_spot": fought,
+            "landed_swings": swung, "killed_a_piglin": killed}
+
+
 def milestones(trace_path):
     """What the run actually achieved, read back from its own trace."""
     opened = took = held = threw = provoked = died = False
@@ -222,7 +245,8 @@ def one_run(ticks, controls, stage="snowball"):
     fresh = sorted(after - before)
     if not fresh:
         return None
-    return (weapon_milestones if stage == "weapon" else milestones)(fresh[-1])
+    scorer = {"weapon": weapon_milestones, "fight": fight_milestones}.get(stage, milestones)
+    return scorer(fresh[-1])
 
 
 def main():
@@ -231,14 +255,15 @@ def main():
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--controls", default="semantic",
                     choices=("semantic", "keyboard", "workflow"))
-    ap.add_argument("--stage", default="snowball", choices=("snowball", "weapon"))
+    ap.add_argument("--stage", default="snowball",
+                    choices=("snowball", "weapon", "fight"))
     args = ap.parse_args()
 
     bridge = Bridge()
     scores, tally = [], {}
     for run in range(args.repeat):
         print(f"run {run + 1}/{args.repeat}")
-        (reset_weapon if args.stage == "weapon" else reset)(bridge)
+        (reset_weapon if args.stage in ("weapon", "fight") else reset)(bridge)
         reached = one_run(args.ticks, args.controls, stage=args.stage)
         if reached is None:
             print("  no trace written; the harness did not run")
