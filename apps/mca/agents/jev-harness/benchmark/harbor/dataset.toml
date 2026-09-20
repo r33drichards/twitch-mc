@@ -1,0 +1,6 @@
+name = "jev-goldfarm"
+version = "0.1.0"
+description = "Decision replay for the Jev-driven Minecraft gold farm harness."
+
+[[tasks]]
+path = "jev-goldfarm"

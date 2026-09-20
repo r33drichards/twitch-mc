@@ -1,5 +1,6 @@
 """The Jev call. One batched request, typed answers back."""
 import json
+import os
 import subprocess
 import time
 import urllib.request
@@ -12,12 +13,20 @@ _key_cache = None
 
 
 def api_key():
-    """Read the key from the login Keychain, so no file ever holds it."""
+    """The API key, from the environment or the login Keychain.
+
+    TYPESAFE_API_KEY wins, because a container has no Keychain. Neither path
+    puts the key in a file.
+    """
     global _key_cache
     if _key_cache is None:
-        _key_cache = subprocess.check_output(
-            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"]
-        ).decode().strip()
+        from_env = os.environ.get("TYPESAFE_API_KEY")
+        if from_env:
+            _key_cache = from_env.strip()
+        else:
+            _key_cache = subprocess.check_output(
+                ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"]
+            ).decode().strip()
     return _key_cache
 
 
