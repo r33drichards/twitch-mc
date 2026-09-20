@@ -20,10 +20,13 @@ class TestActCriteria(unittest.TestCase):
         missing = set(Dispatcher.VERBS) - set(ACT_CRITERIA)
         self.assertEqual(missing, set(), f"verbs with no criterion: {missing}")
 
-    def test_criteria_describe_situations_not_thresholds_for_code(self):
+    def test_every_criterion_says_something(self):
+        # Keyboard keys describe themselves in a few words ("W: walk forward."),
+        # so the bar is that each one is present and meaningful, not that it is
+        # long. The semantic verbs still carry a situation.
         for verb, text in ACT_CRITERIA.items():
             self.assertTrue(text.strip(), f"{verb} has an empty criterion")
-            self.assertGreater(len(text), 20, f"{verb}'s criterion is too thin to choose on")
+            self.assertGreater(len(text), 10, f"{verb}'s criterion says nothing")
 
 
 class TestBuildCandidates(unittest.TestCase):

@@ -14,7 +14,17 @@ from dispatch import Dispatcher, VERB_DURATION_MS
 ACT_CRITERIA = {
     "advance": "Move forward toward the target or destination; it is not reached yet.",
     "retreat": "Back away from what is in front of the player.",
-    "turn_toward": "Rotate to face the target; it is not in front of the player.",
+    "turn_left": "Swing the view a notch to the left, without moving.",
+    "turn_right": "Swing the view a notch to the right, without moving.",
+    "strafe_left": "Step sideways to the left, still facing the same way.",
+    "strafe_right": "Step sideways to the right, still facing the same way.",
+    "hotbar_next": "Scroll to the next hotbar slot.",
+    "hotbar_prev": "Scroll to the previous hotbar slot.",
+    "sneak": "Crouch for a moment, which also stops you walking off an edge.",
+    "sprint": "Run forward rather than walk.",
+    "open_inventory": "Open your own inventory, as the E key does.",
+    **{f"slot_{n}": f"Hold whatever is in hotbar slot {n}, as pressing {n} does."
+       for n in range(1, 10)},
     "jump": "Jump, to clear a block, a gap, or to shake free of an obstruction.",
     "mine_front": "Break the block directly ahead of the player.",
     "place_block": "Place a block from the hotbar against what is ahead.",
@@ -35,6 +45,31 @@ ACT_CRITERIA = {
     "aim_lower": "Tilt the head down a notch without turning.",
     "hold": "Do nothing this tick; waiting is what the situation calls for.",
     "done": "The order is fully satisfied and should be cleared.",
+
+    # --- Full Keyboard Gameplay: the game's own accessibility key map ---
+    "walk_forward": "W: walk forward.",
+    "walk_backward": "S: walk backward.",
+    "strafe_left": "A: step sideways to the left, still facing the same way.",
+    "strafe_right": "D: step sideways to the right, still facing the same way.",
+    "look_up_slight": "Move the camera 15 degrees up.",
+    "look_down_slight": "Move the camera 15 degrees down.",
+    "look_up": "Move the camera 45 degrees up.",
+    "look_down": "Move the camera 45 degrees down.",
+    "look_left": "Move the camera 45 degrees left.",
+    "look_right": "Move the camera 45 degrees right.",
+    "look_up_left": "Move the camera 45 degrees up and left.",
+    "look_up_right": "Move the camera 45 degrees up and right.",
+    "look_down_left": "Move the camera 45 degrees down and left.",
+    "look_down_right": "Move the camera 45 degrees down and right.",
+    "look_up_smooth": "Move the camera up a small amount.",
+    "look_down_smooth": "Move the camera down a small amount.",
+    "look_left_smooth": "Move the camera left a small amount.",
+    "look_right_smooth": "Move the camera right a small amount.",
+    "look_center": "Level the camera back to the middle.",
+    "cycle_item_left": "Select the hotbar slot to the left.",
+    "cycle_item_right": "Select the hotbar slot to the right.",
+    "inventory": "Open or close your own inventory.",
+    "drop_item": "Drop what you are holding.",
 }
 
 ACT_INSTRUCTIONS = (
@@ -163,8 +198,34 @@ VERBS_NEEDING_CRAFTING_TABLE = ("craft",)
 VERBS_NEEDING_A_SCREEN = ("move_stack", "close", "craft")
 
 
-def available_verbs(state):
+# The controls a person actually has at a keyboard: move, look, click, scroll.
+# Every one is parameterless, so no target question is ever needed and nothing
+# has to be enumerated for the model to point at.
+# Minecraft's Full Keyboard Gameplay map, and nothing outside it. Every entry is
+# a key a player presses; there is no verb here that means "craft this" or "open
+# that", because there is no such key.
+FULL_KEYBOARD_VERBS = (
+    "walk_forward", "walk_backward", "strafe_left", "strafe_right",
+    "jump", "sneak", "sprint",
+    "look_up_slight", "look_down_slight",
+    "look_up", "look_down", "look_left", "look_right",
+    "look_up_left", "look_up_right", "look_down_left", "look_down_right",
+    "look_up_smooth", "look_down_smooth", "look_left_smooth", "look_right_smooth",
+    "look_center",
+    *(f"slot_{n}" for n in range(1, 10)),
+    "cycle_item_left", "cycle_item_right",
+    "attack", "use_item", "use_item_hold", "inventory", "drop_item",
+)
+KEYBOARD_VERBS = FULL_KEYBOARD_VERBS
+
+
+def available_verbs(state, controls="semantic"):
     """The verbs this situation actually allows, in criteria order."""
+    if controls == "keyboard":
+        # A screen being open changes nothing here: the keys still work, and
+        # closing one is `close`, which this set deliberately does not include
+        # because opening one is not in it either.
+        return [v for v in FULL_KEYBOARD_VERBS if v in ACT_CRITERIA]
     container = state.get("container") or {}
     if container:
         allowed = set(VERBS_WITH_SCREEN_OPEN)
@@ -197,13 +258,13 @@ def build_candidates(state):
     return candidates
 
 
-def build_questions(state):
+def build_questions(state, controls="semantic"):
     """The one batch asked every tick."""
     questions = {
         "act": {
             "type": "choice",
             "instructions": ACT_INSTRUCTIONS,
-            "criteria": {v: ACT_CRITERIA[v] for v in available_verbs(state)},
+            "criteria": {v: ACT_CRITERIA[v] for v in available_verbs(state, controls)},
         },
         "target_entity": {
             "type": "choice",
@@ -277,8 +338,6 @@ def verbs_without_criteria():
 
 TARGET_QUESTION_FOR_VERB = {
     "attack": "target_entity",
-    "advance": "target_place",
-    "turn_toward": "target_place",
     "open": "target_place",
     "place_block": "target_place",
     "mine_front": "target_place",
@@ -312,10 +371,42 @@ _TARGET_STATE_KEYS = {
 }
 
 
-def build_act_questions(state):
-    """Phase one: the verb, and the readings that ride along."""
-    questions = build_questions(state)
-    return {k: v for k, v in questions.items() if not k.startswith("target")}
+# What choosing a verb actually needs. Measured on a live tick: the full
+# twenty-key state cost 4541 tokens and answered at 0.17 confidence with the
+# probability spread flat, while these six cost 2006 and answered the right verb
+# at 0.34. Phase two gets its own slice, so nothing is lost — only the noise.
+ACT_STATE_KEYS = ("order", "self", "inventory", "hazards", "in_frame",
+                  "recent_decisions_desc")
+
+
+def act_state(state):
+    """The slice phase one is given."""
+    slim = {k: state.get(k) for k in ACT_STATE_KEYS if k in state}
+    container = state.get("container")
+    if container:
+        # One line is enough to know a screen is up; the slots belong to phase two.
+        slim["container"] = container.get("desc") or "a container is open"
+    return slim
+
+
+def build_act_questions(state, without=(), controls="semantic"):
+    """Phase one: the verb, and the readings that ride along.
+
+    `without` drops verbs that have turned out to be impossible here — one
+    whose own target answer came back `none` has no parameter and cannot run,
+    so re-offering it would only repeat the same failure. The model still
+    chooses; it just chooses from what is left.
+    """
+    questions = build_questions(state, controls=controls)
+    questions = {k: v for k, v in questions.items() if not k.startswith("target")}
+    if without:
+        criteria = {v: text for v, text in questions["act"]["criteria"].items()
+                    if v not in set(without)}
+        # Waiting is always possible, and must stay reachable.
+        if not criteria:
+            criteria = {v: ACT_CRITERIA[v] for v in ("hold", "done")}
+        questions["act"] = dict(questions["act"], criteria=criteria)
+    return questions
 
 
 def build_target_question(verb, state):

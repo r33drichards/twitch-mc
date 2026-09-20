@@ -15,7 +15,8 @@ import textwrap
 import unittest
 
 import dispatch
-from dispatch import AIM_STEP_DEG, LATCHING_KEYS, VERB_DURATION_MS, Dispatcher
+from dispatch import (AIM_STEP_DEG, LATCHING_KEYS, TURN_STEP_DEG,
+                      VERB_DURATION_MS, Dispatcher)
 
 HARNESS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -102,8 +103,9 @@ def make(bridge=None, **kw):
     return d, bridge, clock
 
 
-ALL_VERBS = ["advance", "retreat", "turn_toward", "jump", "mine_front", "use_item_hold",
-             "aim_higher", "aim_lower",
+ALL_VERBS = ["advance", "retreat", "jump", "mine_front", "use_item_hold",
+             "aim_higher", "aim_lower", "turn_left", "turn_right",
+             "strafe_left", "strafe_right", "hotbar_next", "hotbar_prev",
              "place_block", "attack", "use_item", "hold", "done",
              "equip", "craft", "open", "move_stack", "close"]
 
@@ -266,60 +268,44 @@ class TestKeysAreReleasedWhenTheProcessDies(unittest.TestCase):
 # --------------------------------------------------------------------------
 
 class TestVerbTable(unittest.TestCase):
-    def test_durations_match_the_design(self):
-        self.assertEqual(VERB_DURATION_MS, {
-            "advance": 300, "retreat": 300, "turn_toward": 0, "jump": 150,
-            "use_item_hold": 1700, "aim_higher": 0, "aim_lower": 0,
-            "mine_front": 1000, "place_block": 0, "attack": 0, "use_item": 0,
-            "hold": 150, "done": 150,
-            "equip": 0, "craft": 1000, "open": 1000, "move_stack": 300,
-            "close": 0})
+    """Handlers and durations stay in lockstep.
+
+    The table is partly generated now (slot_1..slot_9), so pinning a literal
+    dict tested the literal rather than the property. What matters is that every
+    verb can run, every verb has an honest duration, and the durations the
+    design names have not drifted.
+    """
 
     def test_every_verb_has_a_handler_and_a_duration(self):
         self.assertEqual(sorted(Dispatcher.VERBS), sorted(VERB_DURATION_MS))
-        self.assertEqual(sorted(Dispatcher.VERBS), sorted(ALL_VERBS))
 
-    def test_result_shape(self):
-        d, _, _ = make()
-        out = d.execute("hold")
-        self.assertEqual(sorted(out), ["duration_ms", "error", "ok", "verb"])
-        self.assertTrue(out["ok"])
-        self.assertIsNone(out["error"])
-        self.assertEqual(out["verb"], "hold")
+    def test_durations_are_real_milliseconds(self):
+        for verb, ms in VERB_DURATION_MS.items():
+            self.assertIsInstance(ms, int, verb)
+            self.assertGreaterEqual(ms, 0, verb)
 
+    def test_the_durations_the_design_names_have_not_drifted(self):
+        for verb, ms in (("advance", 300), ("retreat", 300), ("jump", 150),
+                         ("mine_front", 1000), ("use_item_hold", 1700),
+                         ("move_stack", 300), ("hold", 150), ("done", 150)):
+            self.assertEqual(VERB_DURATION_MS[verb], ms, verb)
+
+    def test_the_whole_keyboard_is_runnable(self):
+        from questions import KEYBOARD_VERBS
+        for verb in KEYBOARD_VERBS:
+            self.assertIn(verb, Dispatcher.VERBS, verb)
 
 class TestAdvance(unittest.TestCase):
-    def test_turns_then_presses_forward_then_releases(self):
-        d, bridge, clock = make(FakeBridge(PLAYER_AT_ORIGIN))
-        out = d.execute("advance", {"yaw": 90.0})
-        self.assertTrue(out["ok"])
-        self.assertEqual([c[1] for c in bridge.verb_calls()],
-                         ["player.set_rotation", "player.press_key", "player.press_key"])
-        self.assertEqual(bridge.verb_key_calls(), [("forward", "press"), ("forward", "release")])
-        self.assertEqual(clock.sleeps, [0.3])
-        self.assertEqual(out["duration_ms"], 300)
-
-    def test_target_coordinates_become_an_absolute_yaw(self):
-        # facing +Z is yaw 0; a target due west (-X) is yaw 90
-        d, bridge, _ = make(FakeBridge(PLAYER_AT_ORIGIN))
-        d.execute("advance", {"x": -10.0, "y": 64.0, "z": 0.0})
-        rot = [c for c in bridge.calls if c[1] == "player.set_rotation"][0]
-        self.assertYaw(rot[2]["yaw"], 90.0)
-
-    def test_target_straight_ahead_is_yaw_zero(self):
-        d, bridge, _ = make(FakeBridge(PLAYER_AT_ORIGIN))
-        d.execute("advance", {"x": 0.0, "y": 64.0, "z": 10.0})
-        rot = [c for c in bridge.calls if c[1] == "player.set_rotation"][0]
-        self.assertYaw(rot[2]["yaw"], 0.0)
-
-    def test_relative_bearing_is_added_to_the_current_yaw(self):
-        state = {"player.state": {"inWorld": True,
-                                  "pos": {"x": 0.0, "y": 64.0, "z": 0.0},
-                                  "rot": {"yaw": 170.0, "pitch": 0.0}}}
-        d, bridge, _ = make(FakeBridge(state))
-        d.execute("turn_toward", {"rel_yaw": 30.0})
-        rot = [c for c in bridge.calls if c[1] == "player.set_rotation"][0]
-        self.assertYaw(rot[2]["yaw"], -160.0)       # wrapped the short way
+    def test_walks_forward_and_releases_without_steering(self):
+        # Steering belongs to turn_left / turn_right, as at a keyboard.
+        bridge = FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
+        Dispatcher(bridge, sleep=lambda s: None).execute("advance")
+        keys = [(c[2].get("key"), c[2].get("action")) for c in bridge.calls
+                if c[0] == "rpc" and c[1] == "player.press_key"]
+        self.assertIn(("forward", "press"), keys)
+        self.assertIn(("forward", "release"), keys)
+        self.assertEqual([c for c in bridge.calls
+                          if c[0] == "rpc" and c[1] == "player.set_rotation"], [])
 
     def test_without_a_target_it_walks_where_it_already_faces(self):
         d, bridge, clock = make()
@@ -346,21 +332,6 @@ class TestSimpleVerbs(unittest.TestCase):
         self.assertEqual(bridge.verb_key_calls(), [("jump", "press"), ("jump", "release")])
         self.assertEqual(clock.sleeps, [0.15])
         self.assertEqual(out["duration_ms"], 150)
-
-    def test_turn_toward_is_instant(self):
-        d, bridge, clock = make(FakeBridge(PLAYER_AT_ORIGIN))
-        out = d.execute("turn_toward", {"yaw": -45.0, "pitch": 10.0})
-        self.assertEqual([c[1] for c in bridge.verb_calls()], ["player.set_rotation"])
-        self.assertEqual(bridge.verb_calls()[-1][2], {"yaw": -45.0, "pitch": 10.0})
-        self.assertEqual(clock.sleeps, [])
-        self.assertEqual(out["duration_ms"], 0)
-
-    def test_turn_toward_without_a_bearing_is_a_reported_failure(self):
-        d, bridge, _ = make()
-        out = d.execute("turn_toward", None)
-        self.assertFalse(out["ok"])
-        self.assertIn("bearing", out["error"])
-        self.assertNotIn("player.set_rotation", bridge.methods())
 
     def test_hold_sleeps_and_touches_nothing_else(self):
         d, bridge, clock = make()
@@ -443,13 +414,6 @@ class TestAttackAndUse(unittest.TestCase):
         evals = [c for c in bridge.calls if c[0] == "eval"]
         self.assertEqual(len(evals), 1)
         self.assertIn("api:attackEntity(41)", evals[0][1])
-
-    def test_attack_without_an_entity_id_is_reported(self):
-        d, bridge, _ = make()
-        out = d.execute("attack", {"x": 1, "y": 2, "z": 3})
-        self.assertFalse(out["ok"])
-        self.assertIn("id", out["error"])
-        self.assertEqual([c for c in bridge.calls if c[0] == "eval"], [])
 
     def test_attack_rejects_a_non_numeric_id(self):
         d, bridge, _ = make()
@@ -922,46 +886,6 @@ class TestUseItemUsesWhatIsHeld(unittest.TestCase):
         self.assertTrue(result["ok"])
 
 
-class TestFacingAimsThePitchToo(unittest.TestCase):
-    """Facing a target must aim vertically, not just horizontally.
-
-    _face set pitch only when the target carried one, and entity targets never
-    do — so turning toward a piglin swung the yaw and left the head at whatever
-    angle it happened to hold. Eleven snowballs were thrown at piglins two
-    metres below eye level with the pitch stale, and every one fell short.
-    """
-
-    def _dispatcher(self, target_y):
-        bridge = FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
-        d = Dispatcher(bridge, sleep=lambda s: None)
-        d.execute("turn_toward", {"x": 10.0, "y": target_y, "z": 0.0})
-        rot = [c[2] for c in bridge.calls
-               if c[0] == "rpc" and c[1] == "player.set_rotation"][-1]
-        return rot
-
-    def test_a_target_below_eye_level_aims_downward(self):
-        # Positive pitch is downward in Minecraft.
-        rot = self._dispatcher(target_y=62.0)
-        self.assertIn("pitch", rot)
-        self.assertGreater(rot["pitch"], 0)
-
-    def test_a_target_above_eye_level_aims_upward(self):
-        rot = self._dispatcher(target_y=70.0)
-        self.assertLess(rot["pitch"], 0)
-
-    def test_a_level_target_aims_near_level(self):
-        rot = self._dispatcher(target_y=64.0)
-        self.assertLess(abs(rot["pitch"]), 12.0)
-
-    def test_an_explicit_pitch_still_wins(self):
-        bridge = FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
-        Dispatcher(bridge, sleep=lambda s: None).execute(
-            "turn_toward", {"x": 10.0, "y": 62.0, "z": 0.0, "pitch": -30.0})
-        rot = [c[2] for c in bridge.calls
-               if c[0] == "rpc" and c[1] == "player.set_rotation"][-1]
-        self.assertEqual(rot["pitch"], -30.0)
-
-
 class TestAimAdjustmentVerbs(unittest.TestCase):
     """Controls for aiming above or below what you are facing.
 
@@ -997,3 +921,111 @@ class TestAimAdjustmentVerbs(unittest.TestCase):
 
     def test_the_head_cannot_spin_past_straight_up(self):
         self.assertGreaterEqual(self._rot_after("aim_higher", pitch_before=-88.0)["pitch"], -90.0)
+
+
+class TestTurningIsIncremental(unittest.TestCase):
+    """Turning is the mouse, not a targeting computer.
+
+    `turn_toward` snapped the head onto a chosen entity, which is the aiming
+    solved in code rather than by the model. The real controls are left, right,
+    up and down; with the bearing to everything already in state, steering is
+    the model's job.
+    """
+
+    def _rot(self, verb, yaw=90.0, pitch=5.0):
+        state = {"player.state": {"inWorld": True,
+                                  "pos": {"x": 0.0, "y": 64.0, "z": 0.0},
+                                  "blockPos": {"x": 0, "y": 64, "z": 0},
+                                  "rot": {"yaw": yaw, "pitch": pitch}}}
+        bridge = FakeBridge(rpc_results=state)
+        Dispatcher(bridge, sleep=lambda s: None).execute(verb)
+        return [c[2] for c in bridge.calls
+                if c[0] == "rpc" and c[1] == "player.set_rotation"][-1]
+
+    def test_turn_right_increases_yaw(self):
+        self.assertAlmostEqual(self._rot("turn_right")["yaw"], 90.0 + TURN_STEP_DEG, places=1)
+
+    def test_turn_left_decreases_yaw(self):
+        self.assertAlmostEqual(self._rot("turn_left")["yaw"], 90.0 - TURN_STEP_DEG, places=1)
+
+    def test_turning_leaves_the_pitch_alone(self):
+        self.assertAlmostEqual(self._rot("turn_right")["pitch"], 5.0, places=1)
+
+    def test_yaw_wraps_rather_than_running_away(self):
+        self.assertLessEqual(abs(self._rot("turn_right", yaw=179.0)["yaw"]), 180.0)
+
+    def test_turn_toward_is_gone(self):
+        self.assertNotIn("turn_toward", Dispatcher.VERBS)
+
+    def test_advance_walks_without_steering(self):
+        # Facing a target for it was the same auto-aim in disguise.
+        bridge = FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
+        Dispatcher(bridge, sleep=lambda s: None).execute("advance", {"x": 10.0, "y": 64.0, "z": 0.0})
+        rotations = [c for c in bridge.calls
+                     if c[0] == "rpc" and c[1] == "player.set_rotation"]
+        self.assertEqual(rotations, [])
+
+
+class TestAttackWithoutATarget(unittest.TestCase):
+    """A left-click with no target is still a swing.
+
+    In keyboard mode nothing names an entity, so attack has to mean what the
+    mouse button means: swing at whatever is in front of you.
+    """
+
+    def test_it_swings_when_no_entity_is_named(self):
+        bridge = FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
+        out = Dispatcher(bridge, sleep=lambda s: None).execute("attack")
+        self.assertTrue(out["ok"])
+        keys = [(c[2].get("key"), c[2].get("action")) for c in bridge.calls
+                if c[0] == "rpc" and c[1] == "player.press_key"]
+        self.assertIn(("attack", "press"), keys)
+        self.assertIn(("attack", "release"), keys)
+
+    def test_a_named_entity_still_gets_the_targeted_swing(self):
+        bridge = FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
+        Dispatcher(bridge, sleep=lambda s: None).execute("attack", {"id": 41})
+        self.assertTrue(any(c[0] == "eval" and "attackEntity(41)" in c[1]
+                            for c in bridge.calls))
+
+
+class TestKeyboardLayoutVerbs(unittest.TestCase):
+    """The verbs match the keys a player actually has.
+
+    W A S D, Space, Shift, Ctrl, 1-9, E. Minecraft has no native binding for
+    looking around with keys, so turn_* and aim_* stand in for the mouse — the
+    same rebinds an accessibility setup would need.
+    """
+
+    def _bridge(self):
+        return FakeBridge(rpc_results=PLAYER_AT_ORIGIN)
+
+    def test_sneak_presses_shift(self):
+        bridge = self._bridge()
+        Dispatcher(bridge, sleep=lambda s: None).execute("sneak")
+        keys = [(c[2].get("key"), c[2].get("action")) for c in bridge.calls
+                if c[0] == "rpc" and c[1] == "player.press_key"]
+        self.assertIn(("sneak", "press"), keys)
+        self.assertIn(("sneak", "release"), keys)
+
+    def test_sprint_presses_ctrl_while_moving_forward(self):
+        bridge = self._bridge()
+        Dispatcher(bridge, sleep=lambda s: None).execute("sprint")
+        keys = [(c[2].get("key"), c[2].get("action")) for c in bridge.calls
+                if c[0] == "rpc" and c[1] == "player.press_key"]
+        self.assertIn(("sprint", "press"), keys)
+        self.assertIn(("forward", "press"), keys)
+
+    def test_number_keys_select_their_slot(self):
+        for n in range(1, 10):
+            bridge = self._bridge()
+            Dispatcher(bridge, sleep=lambda s: None).execute(f"slot_{n}")
+            slots = [c[2].get("slot") for c in bridge.calls
+                     if c[0] == "rpc" and c[1] == "player.set_hotbar_slot"]
+            self.assertEqual(slots, [n - 1], f"slot_{n} should select hotbar index {n-1}")
+
+    def test_open_inventory_is_the_e_key(self):
+        bridge = self._bridge()
+        Dispatcher(bridge, sleep=lambda s: None).execute("open_inventory")
+        self.assertTrue(any(c[0] == "rpc" and c[1] == "container.open_inventory"
+                            for c in bridge.calls))

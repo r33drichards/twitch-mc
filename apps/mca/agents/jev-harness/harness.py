@@ -19,7 +19,7 @@ import time
 from bridge import Bridge, BridgeDown
 from dispatch import Dispatcher, VERB_DURATION_MS
 from memory import ContainerMemory, DecisionLog, EntityMemory, TickClock
-from questions import (build_act_questions, build_target_question,
+from questions import (act_state, build_act_questions, build_target_question,
                        target_state, ORDER_QUESTIONS)
 from sse import EventStream
 from state import build_state
@@ -29,6 +29,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TRACE_DIR = os.path.join(HERE, "traces")
 LIVE_PATH = os.path.join(TRACE_DIR, "live.json")
 STALE_AFTER_S = 1.5
+# How many times a tick may re-choose after landing on an impossible verb.
+MAX_VERB_RETRIES = 3
 
 
 # Which speculative answer each verb consumes. Every verb reads exactly one,
@@ -36,8 +38,6 @@ STALE_AFTER_S = 1.5
 # takes the one belonging to the verb the model chose.
 VERB_TARGET_QUESTION = {
     "attack": "target_entity",
-    "advance": "target_place",
-    "turn_toward": "target_place",
     "open": "target_place",
     "equip": "target_item",
     "craft": "target_item",
@@ -116,6 +116,17 @@ def resolve_target(state, choice):
     return None
 
 
+def _counts(inventory_json):
+    """Item counts keyed the way state keys them, for comparing two ticks."""
+    counts = {}
+    for slot in inventory_json or []:
+        item = str(slot.get("id") or "")
+        if not item or item == "minecraft:air":
+            continue
+        counts[item.split(":")[-1]] = counts.get(item.split(":")[-1], 0) + int(slot.get("count") or 0)
+    return counts
+
+
 def _entity_health(state, entity_id):
     for e in list((state or {}).get("in_frame") or []) + list((state or {}).get("out_of_frame") or []):
         if e.get("id") == entity_id:
@@ -137,6 +148,17 @@ def measure_outcome(before, after, target=None):
         "moved_m": round(moved, 2),
         "health_delta": round(a.get("health", 0.0) - b.get("health", 0.0), 2),
     }
+    # What the action cost or gained. A verb that changes nothing at all is the
+    # signal that it is not working, and without this it looks identical to one
+    # that worked.
+    was = ((before.get("inventory") or {}).get("counts") or {})
+    now = ((after.get("inventory") or {}).get("counts") or {})
+    if was or now:
+        changed = {item: now.get(item, 0) - was.get(item, 0)
+                   for item in set(was) | set(now)
+                   if now.get(item, 0) != was.get(item, 0)}
+        out["inventory_change"] = changed
+
     # Whether the thing acted upon actually changed. A swing from out of reach
     # reports ok and does nothing, so without this there is no way to tell the
     # difference between hitting a mob and missing it.
@@ -157,11 +179,12 @@ def load_order(path):
 
 class Harness:
     def __init__(self, bridge, order=None, dry_run=False, trace_path=None,
-                 order_path=None):
+                 order_path=None, controls="semantic"):
         self.bridge = bridge
         self.order = order
         # Re-read on every tick so the order can be edited while it runs.
         self.order_path = order_path
+        self.controls = controls
         self._order_mtime = self._mtime(order_path)
         self.dry_run = dry_run
         self.events = EventStream(bridge)
@@ -253,13 +276,21 @@ class Harness:
 
         # Phase one: which verb. Phase two: that verb's target, asked knowing
         # the verb, so the two answers cannot contradict each other.
-        answer = jev.ask(state, build_act_questions(state))
-        answers = answer["answers"]
-        verb = answers["act"]["choice"]
-
-        target, target_answer = None, None
-        asked = build_target_question(verb, state)
-        if asked:
+        # Phase one picks the verb; phase two picks that verb's target knowing
+        # it. A verb whose target comes back `none` cannot run, so it is dropped
+        # and the verb chosen again from what remains — the model decides both
+        # times, and the loop cannot wedge on an impossible option.
+        answer, answers, verb, target = None, {}, None, None
+        impossible = []
+        for _ in range(MAX_VERB_RETRIES):
+            answer = jev.ask(act_state(state),
+                             build_act_questions(state, without=impossible,
+                                                 controls=self.controls))
+            answers = answer["answers"]
+            verb = answers["act"]["choice"]
+            asked = build_target_question(verb, state)
+            if not asked:
+                break
             name, question = asked
             target_answer = jev.ask(target_state(verb, state), {name: question})
             answers[name] = target_answer["answers"][name]
@@ -270,6 +301,10 @@ class Harness:
                     answer.get("usage", {}).get(field, 0)
                     + target_answer.get("usage", {}).get(field, 0))
             target = target_for(verb, answers, state)
+            if target is not None:
+                break
+            impossible.append(verb)
+            print(f"[tick {self.tick_id}] {verb}: no target available, choosing again")
 
         age = time.time() - float(state.get("captured_at") or time.time())
         if age > STALE_AFTER_S:
@@ -289,6 +324,8 @@ class Harness:
         try:
             after = {"self": self.bridge.eval(
                 "return {x=api:x(),y=api:y(),z=api:z(),health=api:health()}")}
+            after["inventory"] = {"counts": _counts(json.loads(
+                self.bridge.eval("return api:inventoryJson()")))}
             if target and target.get("id") is not None:
                 seen = json.loads(self.bridge.eval(
                     f"return api:entitiesJson(32)")) or []
@@ -366,6 +403,9 @@ def main():
     ap.add_argument("--max-ticks", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true", help="decide and log, execute nothing")
     ap.add_argument("--no-trace", action="store_true")
+    ap.add_argument("--controls", choices=("semantic", "keyboard"), default="semantic",
+                    help="keyboard = only the controls a person has at a keyboard, "
+                         "every verb parameterless and no target questions")
     args = ap.parse_args()
 
     order = args.order or load_order(args.order_file)
@@ -375,7 +415,8 @@ def main():
         trace_path = os.path.join(TRACE_DIR, f"{int(time.time())}.jsonl")
 
     harness = Harness(Bridge(), order=order, dry_run=args.dry_run,
-                      trace_path=trace_path, order_path=args.order_file)
+                      trace_path=trace_path, order_path=args.order_file,
+                      controls=args.controls)
     print(f"order: {order!r}\ntrace: {trace_path}")
     harness.run(max_ticks=args.max_ticks)
     return 0

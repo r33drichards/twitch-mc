@@ -2,11 +2,11 @@ Run the piglin gold farm from where you stand, and turn everything into gold blo
 
 Zombified piglins drop gold nuggets and golden gear when killed. Their gear smelts
 into nuggets in the furnace; nuggets craft into ingots and ingots into blocks at the
-crafting table. Snowballs are in the chests here, and a snowball thrown at a piglin
-angers the whole group into coming for you. Eat when you get hungry.
+crafting table. A snowball thrown at a piglin angers the whole group into coming for you. Eat when you get hungry.
 
-Two things you cannot see for yourself: `aggressive` is the only sign a piglin is
-actually coming for you, since `hostile` just means it belongs to a monster class;
-and there is a drop off the edge of this platform.
+Things you cannot see for yourself: `aggressive` is the only sign a piglin is
+actually coming for you, since `hostile` just means it belongs to a monster class.
+Unprovoked piglins ignore you and will never walk into your reach on their own, so
+nothing happens until one is angered. There is a drop off the edge of this platform.
 
 Done when everything you carry is gold blocks.

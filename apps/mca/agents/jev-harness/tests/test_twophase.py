@@ -13,6 +13,7 @@ from questions import build_act_questions, build_target_question, target_state
 
 STATE = {
     "self": {"desc": "lmoik, 20/20 health"},
+    "hazards": {"desc": "standing on bamboo_planks, air ahead"},
     "order": "take the snowballs",
     "in_frame": [{"id": 11, "desc": "piglin — ahead, 4.4m"}],
     "out_of_frame": [],
@@ -106,3 +107,73 @@ class TestSlotCandidateCoverage(unittest.TestCase):
                                "slots": [{"slot": 22, "id": "minecraft:gold_nugget",
                                           "count": 2}]}}
         self.assertIn("gold_nugget", slot_candidates(state)["22"])
+
+
+class TestUnavailableVerbIsReoffered(unittest.TestCase):
+    """A verb whose target comes back `none` cannot happen — so ask again.
+
+    Live, `act` chose move_stack at 0.57 while its own target_slot answered
+    `none`, twenty-four ticks running, with five spelled-out failures visible in
+    state. Identical state gives an identical answer; the loop cannot escape by
+    restating the problem. Code still decides nothing here: it drops an option
+    that turned out to be impossible and lets the model choose from the rest,
+    which is the same rule as only offering verbs the situation allows.
+    """
+
+    def test_a_verb_with_no_target_is_dropped_from_the_retry(self):
+        from questions import build_act_questions
+        state = {"self": {}, "order": "x", "in_frame": [], "out_of_frame": [],
+                 "inventory": {"counts": {}}, "craftable": [],
+                 "stations": {"near": []},
+                 "container": {"screen": "chest", "slots": []}}
+        again = build_act_questions(state, without=("move_stack",))
+        self.assertNotIn("move_stack", again["act"]["criteria"])
+        self.assertIn("close", again["act"]["criteria"])
+
+    def test_dropping_everything_leaves_the_waiting_verbs(self):
+        from questions import build_act_questions
+        state = {"self": {}, "order": "x", "in_frame": [], "out_of_frame": [],
+                 "inventory": {"counts": {}}, "craftable": [],
+                 "stations": {"near": []},
+                 "container": {"screen": "chest", "slots": []}}
+        again = build_act_questions(state, without=("move_stack", "close"))
+        self.assertTrue(set(again["act"]["criteria"]))
+        self.assertIn("hold", again["act"]["criteria"])
+
+
+class TestPhaseOneStateIsSlim(unittest.TestCase):
+    """Phase one gets what choosing a verb needs, and no more.
+
+    Measured against the live world on one tick: the full twenty-key state cost
+    4541 tokens and answered `turn_toward` at 0.17 confidence with the mass
+    spread flat. The same tick, same questions, on six keys cost 2006 tokens and
+    answered `equip` at 0.34 — which was the actual next step, the bot being sat
+    on sixty-five snowballs with a sword in hand. The docs call this context
+    rot; this is what it looks like.
+    """
+
+    def test_the_heavy_keys_are_left_out(self):
+        from questions import act_state
+        slim = act_state(STATE | {"seen_recently": [1], "containers_seen": [1],
+                                  "stations": {"near": [1] * 10},
+                                  "recent_sounds": [1], "self_assessment": [1],
+                                  "craftable": [1], "out_of_frame": [1]})
+        for heavy in ("seen_recently", "containers_seen", "stations",
+                      "recent_sounds", "self_assessment", "craftable"):
+            self.assertNotIn(heavy, slim)
+
+    def test_what_choosing_a_verb_needs_is_kept(self):
+        from questions import act_state
+        slim = act_state(STATE)
+        for needed in ("order", "self", "inventory", "hazards", "in_frame"):
+            self.assertIn(needed, slim)
+
+    def test_an_open_screen_is_mentioned_in_one_line(self):
+        from questions import act_state
+        slim = act_state(STATE)
+        self.assertIsInstance(slim["container"], str)
+        self.assertIn("chest", slim["container"])
+
+    def test_nothing_open_means_no_container_key(self):
+        from questions import act_state
+        self.assertNotIn("container", act_state(STATE | {"container": None}))

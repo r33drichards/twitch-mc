@@ -51,7 +51,37 @@ CONTAINER_PACE_MS = 300
 VERB_DURATION_MS = {
     "advance": 300,
     "retreat": 300,
-    "turn_toward": 0,
+    "turn_left": 0,
+    "turn_right": 0,
+    "strafe_left": 300,
+    "strafe_right": 300,
+    "hotbar_next": 0,
+    "hotbar_prev": 0,
+    "look_up_slight": 0,
+    "look_down_slight": 0,
+    "look_up": 0,
+    "look_down": 0,
+    "look_left": 0,
+    "look_right": 0,
+    "look_up_left": 0,
+    "look_up_right": 0,
+    "look_down_left": 0,
+    "look_down_right": 0,
+    "look_up_smooth": 0,
+    "look_down_smooth": 0,
+    "look_left_smooth": 0,
+    "look_right_smooth": 0,
+    "look_center": 0,
+    "cycle_item_left": 0,
+    "cycle_item_right": 0,
+    "inventory": 0,
+    "drop_item": 0,
+    "walk_forward": 300,
+    "walk_backward": 300,
+    "sneak": 300,
+    "sprint": 400,
+    "open_inventory": 0,
+    **{f"slot_{n}": 0 for n in range(1, 10)},
     "jump": 150,
     "mine_front": 1000,
     "place_block": 0,
@@ -191,6 +221,15 @@ EYE_HEIGHT = 1.62
 AIM_HEIGHT = 1.0
 # How far one aim_higher / aim_lower moves the head.
 AIM_STEP_DEG = 10.0
+# How far one turn_left / turn_right swings the view.
+TURN_STEP_DEG = 15.0
+# Full Keyboard Gameplay's own camera steps: the - and + keys move 15 degrees,
+# the numpad keys 45, and the arrow keys move smoothly.
+LOOK_SLIGHT_DEG = 15.0
+LOOK_STEP_DEG = 45.0
+LOOK_SMOOTH_DEG = 10.0
+# How long a bare left-click holds the attack key.
+ATTACK_CLICK_MS = 120.0
 
 
 class Dispatcher:
@@ -274,61 +313,6 @@ class Dispatcher:
             raise VerbError("player.state says not in world")
         return state
 
-    def _resolve_yaw(self, target: dict | None) -> float | None:
-        """The absolute yaw that faces `target`, or None if it names no bearing."""
-        if not target:
-            return None
-        if target.get("yaw") is not None:
-            return float(target["yaw"])
-        if target.get("x") is not None and target.get("z") is not None:
-            state = self._player_state()
-            pos = state.get("pos") or {}
-            dx = float(target["x"]) - float(pos.get("x", 0.0))
-            dz = float(target["z"]) - float(pos.get("z", 0.0))
-            if dx == 0.0 and dz == 0.0:
-                return None                # standing on it; no bearing exists
-            # A bearing relative to yaw 0 is the absolute yaw.
-            return relative_bearing(0.0, dx, dz)
-        if target.get("rel_yaw") is not None:
-            state = self._player_state()
-            yaw = float((state.get("rot") or {}).get("yaw", 0.0))
-            return normalize_deg(yaw + float(target["rel_yaw"]))
-        return None
-
-    def _face(self, target: dict | None) -> bool:
-        yaw = self._resolve_yaw(target)
-        if yaw is None:
-            return False
-        params = {"yaw": yaw}
-        pitch = self._resolve_pitch(target)
-        if pitch is not None:
-            params["pitch"] = pitch
-        self.bridge.rpc("player.set_rotation", params)
-        return True
-
-    def _resolve_pitch(self, target: dict | None) -> float | None:
-        """The head angle that looks at `target`, or None if it names no height.
-
-        Positive pitch is downward. The line is drawn from the player's eyes to
-        roughly the middle of the target, since aiming at a mob's feet throws
-        into the floor in front of it. Without this the pitch simply stays where
-        it was, and anything thrown goes wherever the head last pointed.
-        """
-        if not target:
-            return None
-        if target.get("pitch") is not None:
-            return float(target["pitch"])
-        if target.get("y") is None or target.get("x") is None or target.get("z") is None:
-            return None
-        pos = (self._player_state().get("pos") or {})
-        dx = float(target["x"]) - float(pos.get("x", 0.0))
-        dz = float(target["z"]) - float(pos.get("z", 0.0))
-        horizontal = math.hypot(dx, dz)
-        if horizontal == 0.0:
-            return None
-        drop = (float(pos.get("y", 0.0)) + EYE_HEIGHT) - (float(target["y"]) + AIM_HEIGHT)
-        return round(math.degrees(math.atan2(drop, horizontal)), 1)
-
     def _raycast(self) -> dict:
         hit = self.bridge.rpc("world.raycast", {"max": RAYCAST_MAX}) or {}
         if hit.get("type") != "BLOCK":
@@ -344,8 +328,7 @@ class Dispatcher:
     # -- the verbs ---------------------------------------------------------
 
     def _advance(self, target, deadline):
-        """Face the target if one was given, then walk forward for the bound."""
-        self._face(target)
+        """Walk forward for the bound. Steering is turn_left / turn_right."""
         self._press_for("forward", VERB_DURATION_MS["advance"])
 
     def _retreat(self, target, deadline):
@@ -372,10 +355,71 @@ class Dispatcher:
     def _aim_lower(self, target, deadline):
         self._aim(AIM_STEP_DEG)
 
-    def _turn_toward(self, target, deadline):
-        if not self._face(target):
-            raise VerbError("turn_toward needs a bearing: target has no "
-                            "yaw, rel_yaw or x/z")
+    def _turn(self, delta_deg):
+        """Swing the view left or right, keeping the current pitch.
+
+        This is the mouse. Snapping the head onto a chosen entity would be the
+        aiming solved here rather than by whoever is playing.
+        """
+        rot = self._player_state().get("rot") or {}
+        yaw = normalize_deg(float(rot.get("yaw", 0.0)) + delta_deg)
+        self.bridge.rpc("player.set_rotation",
+                        {"yaw": round(yaw, 1), "pitch": round(float(rot.get("pitch", 0.0)), 1)})
+
+    def _turn_left(self, target, deadline):
+        self._turn(-TURN_STEP_DEG)
+
+    def _turn_right(self, target, deadline):
+        self._turn(TURN_STEP_DEG)
+
+    def _strafe_left(self, target, deadline):
+        self._press_for("left", VERB_DURATION_MS["strafe_left"])
+
+    def _strafe_right(self, target, deadline):
+        self._press_for("right", VERB_DURATION_MS["strafe_right"])
+
+    def _look(self, d_yaw, d_pitch, center=False):
+        """Move the camera, as one of the look keys does."""
+        rot = self._player_state().get("rot") or {}
+        yaw = normalize_deg(float(rot.get("yaw", 0.0)) + d_yaw)
+        pitch = 0.0 if center else float(rot.get("pitch", 0.0)) + d_pitch
+        pitch = max(-90.0, min(90.0, pitch))
+        self.bridge.rpc("player.set_rotation",
+                        {"yaw": round(yaw, 1), "pitch": round(pitch, 1)})
+
+    def _walk_forward(self, target, deadline):
+        self._press_for("forward", VERB_DURATION_MS["walk_forward"])
+
+    def _walk_backward(self, target, deadline):
+        self._press_for("back", VERB_DURATION_MS["walk_backward"])
+
+    def _drop_item(self, target, deadline):
+        raise VerbError("drop_item has no key on the bridge yet")
+
+    def _sneak(self, target, deadline):
+        self._press_for("sneak", VERB_DURATION_MS["sneak"])
+
+    def _sprint(self, target, deadline):
+        """Ctrl plus forward: sprinting alone does nothing standing still."""
+        self.bridge.rpc("player.press_key", {"key": "sprint", "action": "press"})
+        try:
+            self._press_for("forward", VERB_DURATION_MS["sprint"])
+        finally:
+            self.bridge.rpc("player.press_key", {"key": "sprint", "action": "release"})
+
+    def _open_inventory(self, target, deadline):
+        self.bridge.rpc("container.open_inventory")
+
+    def _select_slot(self, index):
+        self.bridge.rpc("player.set_hotbar_slot", {"slot": index})
+
+    def _hotbar_next(self, target, deadline):
+        slot = (int(self._player_state().get("hotbarSlot", 0) or 0) + 1) % HOTBAR_SIZE
+        self.bridge.rpc("player.set_hotbar_slot", {"slot": slot})
+
+    def _hotbar_prev(self, target, deadline):
+        slot = (int(self._player_state().get("hotbarSlot", 0) or 0) - 1) % HOTBAR_SIZE
+        self.bridge.rpc("player.set_hotbar_slot", {"slot": slot})
 
     def _jump(self, target, deadline):
         self._press_for("jump", VERB_DURATION_MS["jump"])
@@ -404,7 +448,9 @@ class Dispatcher:
     def _attack(self, target, deadline):
         raw = (target or {}).get("id")
         if raw is None:
-            raise VerbError("attack needs a target entity id")
+            # The mouse button, with nothing named: swing at whatever is ahead.
+            self._press_for("attack", ATTACK_CLICK_MS)
+            return
         try:
             entity_id = int(raw)
         except (TypeError, ValueError):
@@ -557,7 +603,38 @@ class Dispatcher:
 Dispatcher.VERBS = {
     "advance": Dispatcher._advance,
     "retreat": Dispatcher._retreat,
-    "turn_toward": Dispatcher._turn_toward,
+    "turn_left": Dispatcher._turn_left,
+    "turn_right": Dispatcher._turn_right,
+    "strafe_left": Dispatcher._strafe_left,
+    "strafe_right": Dispatcher._strafe_right,
+    "hotbar_next": Dispatcher._hotbar_next,
+    "hotbar_prev": Dispatcher._hotbar_prev,
+    "look_up_slight": (lambda d: lambda self, target, deadline: self._look(*d))((0.0, -LOOK_SLIGHT_DEG)),
+    "look_down_slight": (lambda d: lambda self, target, deadline: self._look(*d))((0.0, LOOK_SLIGHT_DEG)),
+    "look_up": (lambda d: lambda self, target, deadline: self._look(*d))((0.0, -LOOK_STEP_DEG)),
+    "look_down": (lambda d: lambda self, target, deadline: self._look(*d))((0.0, LOOK_STEP_DEG)),
+    "look_left": (lambda d: lambda self, target, deadline: self._look(*d))((-LOOK_STEP_DEG, 0.0)),
+    "look_right": (lambda d: lambda self, target, deadline: self._look(*d))((LOOK_STEP_DEG, 0.0)),
+    "look_up_left": (lambda d: lambda self, target, deadline: self._look(*d))((-LOOK_STEP_DEG, -LOOK_STEP_DEG)),
+    "look_up_right": (lambda d: lambda self, target, deadline: self._look(*d))((LOOK_STEP_DEG, -LOOK_STEP_DEG)),
+    "look_down_left": (lambda d: lambda self, target, deadline: self._look(*d))((-LOOK_STEP_DEG, LOOK_STEP_DEG)),
+    "look_down_right": (lambda d: lambda self, target, deadline: self._look(*d))((LOOK_STEP_DEG, LOOK_STEP_DEG)),
+    "look_up_smooth": (lambda d: lambda self, target, deadline: self._look(*d))((0.0, -LOOK_SMOOTH_DEG)),
+    "look_down_smooth": (lambda d: lambda self, target, deadline: self._look(*d))((0.0, LOOK_SMOOTH_DEG)),
+    "look_left_smooth": (lambda d: lambda self, target, deadline: self._look(*d))((-LOOK_SMOOTH_DEG, 0.0)),
+    "look_right_smooth": (lambda d: lambda self, target, deadline: self._look(*d))((LOOK_SMOOTH_DEG, 0.0)),
+    "look_center": lambda self, target, deadline: self._look(0.0, 0.0, center=True),
+    "cycle_item_left": Dispatcher._hotbar_prev,
+    "cycle_item_right": Dispatcher._hotbar_next,
+    "inventory": Dispatcher._open_inventory,
+    "drop_item": Dispatcher._drop_item,
+    "walk_forward": Dispatcher._walk_forward,
+    "walk_backward": Dispatcher._walk_backward,
+    "sneak": Dispatcher._sneak,
+    "sprint": Dispatcher._sprint,
+    "open_inventory": Dispatcher._open_inventory,
+    **{f"slot_{n}": (lambda n: lambda self, target, deadline: self._select_slot(n - 1))(n)
+       for n in range(1, 10)},
     "jump": Dispatcher._jump,
     "mine_front": Dispatcher._mine_front,
     "place_block": Dispatcher._place_block,

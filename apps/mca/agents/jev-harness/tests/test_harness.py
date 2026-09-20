@@ -166,3 +166,32 @@ class TestOutcomeWatchesTheTarget(unittest.TestCase):
     def test_no_target_means_no_target_field(self):
         out = measure_outcome(self.BEFORE, self.BEFORE, target=None)
         self.assertNotIn("target_health_delta", out)
+
+
+class TestOutcomeNoticesInventoryChange(unittest.TestCase):
+    """Whether the action changed what you carry.
+
+    Thirty right-clicks on a chestplate produced no movement, no damage and no
+    inventory change, and nothing in state said so — so the same answer came
+    back every tick. Throwing a snowball decrements it; using a chestplate
+    moves it; doing nothing changes nothing, and that is the useful signal.
+    """
+
+    BEFORE = {"self": {"x": 0.0, "y": 64.0, "z": 0.0, "health": 20.0},
+              "inventory": {"counts": {"snowball": 65, "torch": 64}}}
+
+    def test_an_item_that_was_spent_is_reported(self):
+        after = {"self": self.BEFORE["self"],
+                 "inventory": {"counts": {"snowball": 64, "torch": 64}}}
+        out = measure_outcome(self.BEFORE, after)
+        self.assertEqual(out["inventory_change"], {"snowball": -1})
+
+    def test_no_change_is_reported_as_nothing_changed(self):
+        out = measure_outcome(self.BEFORE, dict(self.BEFORE))
+        self.assertEqual(out["inventory_change"], {})
+
+    def test_a_new_item_shows_up(self):
+        after = {"self": self.BEFORE["self"],
+                 "inventory": {"counts": {"snowball": 65, "torch": 64, "gold_ingot": 1}}}
+        self.assertEqual(measure_outcome(self.BEFORE, after)["inventory_change"],
+                         {"gold_ingot": 1})
