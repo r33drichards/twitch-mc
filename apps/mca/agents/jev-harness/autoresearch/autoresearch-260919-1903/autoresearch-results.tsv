@@ -1,0 +1,7 @@
+iter	metric	delta	status	change
+0	0.4750		baseline	40 cases from fresh traces
+1	0.5000	+0.0250	KEEP	affordance: use_item/use_item_hold/drop not offered with an empty hand
+2	0.5000	+0.0000	DISCARD	wording: use_item and aim criteria made consequential
+3	0.4750	-0.0250	DISCARD	act_state gains out_of_frame (+20k tokens, container case fell)
+4	0.4250	-0.0750	DISCARD	act instructions state hand-and-crosshair consequence
+5	0.5204	-0.0029	NEUTRAL	re-measured on 196 cases against baseline 0.5233 — iteration 1 was noise

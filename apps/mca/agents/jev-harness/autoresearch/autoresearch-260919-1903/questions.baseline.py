@@ -257,7 +257,6 @@ def available_verbs(state, controls="semantic"):
         # change anything, and a verb that does nothing never fails, so nothing
         # would ever catch the loop pressing it.
         inventory = state.get("inventory") or {}
-        held = (inventory.get("held") or {}).get("id")
         held_slot = (inventory.get("held") or {}).get("slot")
         selected_key = f"slot_{int(held_slot) + 1}" if held_slot is not None else None
         # Slots holding nothing are no better than the one already selected.
@@ -265,15 +264,9 @@ def available_verbs(state, controls="semantic"):
         hotbar = inventory.get("hotbar")
         filled = ({f"slot_{int(e['slot']) + 1}" for e in hotbar if e.get("slot") is not None}
                   if hotbar else None)
-        # Using an empty hand does nothing at all, so those keys are not
-        # offered while the hand is empty. Punching still works, so `attack`
-        # stays.
-        empty_handed = "held" in inventory and not held
-        use_keys = {"use_item", "use_item_hold", "drop_item"}
         return [v for v in FULL_KEYBOARD_VERBS
                 if v in ACT_CRITERIA and v != selected_key
-                and (filled is None or not v.startswith("slot_") or v in filled)
-                and not (empty_handed and v in use_keys)]
+                and (filled is None or not v.startswith("slot_") or v in filled)]
     container = state.get("container") or {}
     if container:
         allowed = set(VERBS_WITH_SCREEN_OPEN)
