@@ -29,6 +29,41 @@ TRACE_DIR = os.path.join(HERE, "traces")
 STALE_AFTER_S = 1.5
 
 
+# Which speculative answer each verb consumes. Every verb reads exactly one,
+# so there is never a tie to break: the model answered all of them, and code
+# takes the one belonging to the verb the model chose.
+VERB_TARGET_QUESTION = {
+    "attack": "target_entity",
+    "advance": "target_place",
+    "turn_toward": "target_place",
+    "open": "target_place",
+    "equip": "target_item",
+    "craft": "target_item",
+    "use_item": "target_item",
+    "use_item_hold": "target_item",
+    "move_stack": "target_slot",
+    "place_block": "target_place",
+    "mine_front": "target_place",
+}
+
+
+def target_for(verb, answers, state):
+    """The target for this verb, read from its own speculative answer."""
+    question = VERB_TARGET_QUESTION.get(verb)
+    if not question:
+        return None
+    choice = (answers.get(question) or {}).get("choice")
+    if not choice or choice == "none":
+        return None
+    if question == "target_slot":
+        # A slot is a bare number and means nothing to entity or position lookup.
+        try:
+            return {"slot": int(choice)}
+        except (TypeError, ValueError):
+            return None
+    return resolve_target(state, choice)
+
+
 def resolve_target(state, choice):
     """Turn the model's chosen candidate id back into something executable.
 
@@ -147,7 +182,7 @@ class Harness:
         answer = jev.ask(state, build_questions(state))
         answers = answer["answers"]
         verb = answers["act"]["choice"]
-        target = resolve_target(state, answers.get("target", {}).get("choice"))
+        target = target_for(verb, answers, state)
 
         age = time.time() - float(state.get("captured_at") or time.time())
         if age > STALE_AFTER_S:

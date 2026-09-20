@@ -42,10 +42,11 @@ class TestBuildCandidates(unittest.TestCase):
 
 
 class TestBuildQuestions(unittest.TestCase):
-    def test_asks_act_and_target_in_one_batch(self):
+    def test_asks_act_and_its_targets_in_one_batch(self):
         q = build_questions(STATE)
         self.assertEqual(q["act"]["type"], "choice")
-        self.assertEqual(q["target"]["type"], "choice")
+        # Targets are split by kind; see TestSpeculativeTargetQuestions.
+        self.assertEqual(q["target_entity"]["type"], "choice")
 
     def test_act_offers_exactly_the_dispatcher_verbs(self):
         q = build_questions(STATE)
@@ -112,3 +113,61 @@ class TestCandidatesCoverVerbParameters(unittest.TestCase):
 
     def test_entities_still_offered_alongside(self):
         self.assertIn("11", build_candidates(self.STATE_WITH_STUFF))
+
+
+class TestSpeculativeTargetQuestions(unittest.TestCase):
+    """One target question cannot serve every verb.
+
+    Questions cannot see each other's answers, so a single `target` asked
+    against 30 mixed candidates has no idea whether the verb needs a creature,
+    a position, an item or a slot — and answers `none`. Several narrow
+    questions are asked instead, each stating its premise, and code consumes
+    the one belonging to the chosen verb.
+    """
+
+    STATE = TestCandidatesCoverVerbParameters.STATE_WITH_STUFF
+
+    def test_asks_a_separate_question_per_target_kind(self):
+        q = build_questions(self.STATE)
+        for name in ("target_entity", "target_place", "target_item"):
+            self.assertIn(name, q)
+            self.assertEqual(q[name]["type"], "choice")
+
+    def test_each_target_question_stands_on_its_own(self):
+        # Phrased as a conditional ("if the action is open, which place?") every
+        # one of these answered `none` with high confidence against the live
+        # world: the premise names a verb the question cannot see. Each must be
+        # answerable on its own terms, and say that it is read selectively.
+        q = build_questions(self.STATE)
+        self.assertIn("creature", q["target_entity"]["instructions"])
+        self.assertIn("open", q["target_place"]["instructions"])
+        self.assertIn("craft", q["target_item"]["instructions"])
+        for name in ("target_entity", "target_place", "target_item"):
+            text = q[name]["instructions"]
+            self.assertNotIn("If the action is", text)
+            self.assertIn("order", text)
+
+    def test_entity_question_offers_creatures_not_items(self):
+        c = build_questions(self.STATE)["target_entity"]["criteria"]
+        self.assertIn("11", c)
+        self.assertNotIn("minecraft:snowball", c)
+
+    def test_item_question_offers_carried_and_craftable_not_creatures(self):
+        c = build_questions(self.STATE)["target_item"]["criteria"]
+        self.assertIn("minecraft:snowball", c)
+        self.assertIn("minecraft:gold_ingot", c)
+        self.assertNotIn("11", c)
+
+    def test_place_question_offers_positions(self):
+        c = build_questions(self.STATE)["target_place"]["criteria"]
+        self.assertIn("5733,232,436", c)
+
+    def test_slot_question_only_appears_when_a_container_is_open(self):
+        self.assertNotIn("target_slot", build_questions(self.STATE))
+        with_container = dict(self.STATE)
+        with_container["container"] = {
+            "screen": "furnace",
+            "slots": [{"slot": 0, "id": "minecraft:golden_helmet", "count": 1}],
+            "desc": "furnace open",
+        }
+        self.assertIn("target_slot", build_questions(with_container))

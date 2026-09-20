@@ -1,7 +1,7 @@
 """The loop's own logic: resolving a choice into a target, and measuring outcomes."""
 import unittest
 
-from harness import resolve_target, measure_outcome
+from harness import resolve_target, measure_outcome, target_for
 
 
 STATE = {
@@ -61,3 +61,38 @@ class TestResolveItemTargets(unittest.TestCase):
     def test_item_target_is_what_equip_and_craft_both_take(self):
         # dispatch's equip takes {"item": ...} and craft takes {"item": ...}.
         self.assertIn("item", resolve_target(STATE, "minecraft:gold_ingot"))
+
+
+class TestTargetForVerb(unittest.TestCase):
+    """Each verb consumes exactly one speculative answer; no tie-breaks."""
+
+    ANSWERS = {
+        "target_entity": {"choice": "11"},
+        "target_place": {"choice": "5733,232,436"},
+        "target_item": {"choice": "minecraft:snowball"},
+        "target_slot": {"choice": "0"},
+    }
+
+    def test_attack_uses_the_entity_answer(self):
+        self.assertEqual(target_for("attack", self.ANSWERS, STATE)["id"], 11)
+
+    def test_open_uses_the_place_answer(self):
+        t = target_for("open", self.ANSWERS, STATE)
+        self.assertEqual((t["x"], t["y"], t["z"]), (5733, 232, 436))
+
+    def test_equip_uses_the_item_answer(self):
+        self.assertEqual(target_for("equip", self.ANSWERS, STATE)["item"], "minecraft:snowball")
+
+    def test_craft_uses_the_item_answer(self):
+        self.assertEqual(target_for("craft", self.ANSWERS, STATE)["item"], "minecraft:snowball")
+
+    def test_move_stack_uses_the_slot_answer(self):
+        self.assertEqual(target_for("move_stack", self.ANSWERS, STATE)["slot"], 0)
+
+    def test_verbs_that_need_nothing_get_nothing(self):
+        for verb in ("hold", "done", "jump", "close"):
+            self.assertIsNone(target_for(verb, self.ANSWERS, STATE))
+
+    def test_unanswered_target_is_not_invented(self):
+        answers = {"target_place": {"choice": "none"}}
+        self.assertIsNone(target_for("open", answers, STATE))

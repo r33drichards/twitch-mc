@@ -38,9 +38,29 @@ ACT_INSTRUCTIONS = (
     "decides: whatever you choose is what happens."
 )
 
-TARGET_INSTRUCTIONS = (
-    "Which entity, block position or item the chosen action applies to. Pick `none` "
-    "when the action needs no target."
+# One target question cannot serve every verb: questions cannot see each other's
+# answers, so a single list of mixed candidates leaves the model guessing what
+# kind of thing is even wanted. Each question below states its premise, all are
+# asked together, and code reads only the one belonging to the chosen verb.
+TARGET_ENTITY_INSTRUCTIONS = (
+    "Which creature should the bot go for next, given `order` and the state? Judge it "
+    "on its own: this is asked every tick and read only when the action turns out to "
+    "involve a creature. Pick `none` only when no creature is a sensible one."
+)
+TARGET_PLACE_INSTRUCTIONS = (
+    "Which block position or creature should the bot head toward, face, or open next, "
+    "given `order` and the state? Judge it on its own: this is asked every tick and read "
+    "only when the action turns out to involve going somewhere or opening something. "
+    "Pick `none` only when nothing listed serves the order."
+)
+TARGET_ITEM_INSTRUCTIONS = (
+    "Which item should the bot hold, use, or craft next, given `order` and the state? "
+    "Judge it on its own: this is asked every tick and read only when the action turns "
+    "out to involve an item. Pick `none` only when no item listed serves the order."
+)
+TARGET_SLOT_INSTRUCTIONS = (
+    "If the action is move_stack, which slot of the open container is being moved? "
+    "Pick `none` otherwise."
 )
 
 ORDER_QUESTIONS = {
@@ -71,12 +91,56 @@ def _stations(state):
     return list(stations)
 
 
-def build_candidates(state):
-    """The target options, enumerated from what the world actually contains.
+def entity_candidates(state):
+    """Creatures, visible or lately remembered."""
+    candidates = {}
+    for e in list(state.get("in_frame") or []) + list(state.get("out_of_frame") or []):
+        candidates[str(e["id"])] = e.get("desc") or e.get("type") or "entity"
+    candidates["none"] = "No creature listed is worth going for."
+    return candidates
 
-    Code lists what exists; the model picks among them. Nothing is invented,
-    because an entity that is not here cannot appear in the criteria.
-    """
+
+def place_candidates(state):
+    """Block positions worth going to or opening, plus creatures to approach."""
+    candidates = {}
+    for st in _stations(state)[:8]:
+        key = f"{st['x']},{st['y']},{st['z']}" if "x" in st else st.get("id")
+        if key:
+            candidates[str(key)] = st.get("desc") or str(key)
+    for e in list(state.get("in_frame") or [])[:4]:
+        candidates[str(e["id"])] = e.get("desc") or e.get("type") or "entity"
+    candidates["none"] = "Nothing listed is worth heading toward or opening."
+    return candidates
+
+
+def item_candidates(state):
+    """Items carried, and results the recipe book says can be made."""
+    candidates = {}
+    inventory = state.get("inventory") or {}
+    for item, count in (inventory.get("counts") or {}).items():
+        candidates[item] = f"{item.split(':')[-1]} carried, {count} of them"
+    for recipe in (state.get("craftable") or [])[:8]:
+        result = recipe.get("result")
+        if result:
+            candidates[result] = recipe.get("desc") or f"craft {result.split(':')[-1]}"
+    candidates["none"] = "No item listed serves the order right now."
+    return candidates
+
+
+def slot_candidates(state):
+    """Slots of the open container, if one is open."""
+    container = state.get("container") or {}
+    candidates = {}
+    for slot in (container.get("slots") or [])[:12]:
+        sid = slot.get("id", "?")
+        candidates[str(slot.get("slot"))] = (
+            f"slot {slot.get('slot')}: {slot.get('count', 1)} {str(sid).split(':')[-1]}")
+    candidates["none"] = "No slot is being moved."
+    return candidates
+
+
+def build_candidates(state):
+    """Every target option in one map, for callers that want the whole set."""
     candidates = {}
     for e in list(state.get("in_frame") or []) + list(state.get("out_of_frame") or []):
         candidates[str(e["id"])] = e.get("desc") or e.get("type") or "entity"
@@ -99,16 +163,26 @@ def build_candidates(state):
 
 def build_questions(state):
     """The one batch asked every tick."""
-    return {
+    questions = {
         "act": {
             "type": "choice",
             "instructions": ACT_INSTRUCTIONS,
             "criteria": dict(ACT_CRITERIA),
         },
-        "target": {
+        "target_entity": {
             "type": "choice",
-            "instructions": TARGET_INSTRUCTIONS,
-            "criteria": build_candidates(state),
+            "instructions": TARGET_ENTITY_INSTRUCTIONS,
+            "criteria": entity_candidates(state),
+        },
+        "target_place": {
+            "type": "choice",
+            "instructions": TARGET_PLACE_INSTRUCTIONS,
+            "criteria": place_candidates(state),
+        },
+        "target_item": {
+            "type": "choice",
+            "instructions": TARGET_ITEM_INSTRUCTIONS,
+            "criteria": item_candidates(state),
         },
         "arrived": {
             "type": "noul",
@@ -140,6 +214,15 @@ def build_questions(state):
             },
         },
     }
+    # Only ask about slots when a container is actually open; otherwise the
+    # question has nothing to offer but `none`.
+    if state.get("container"):
+        questions["target_slot"] = {
+            "type": "choice",
+            "instructions": TARGET_SLOT_INSTRUCTIONS,
+            "criteria": slot_candidates(state),
+        }
+    return questions
 
 
 def verbs_without_criteria():
