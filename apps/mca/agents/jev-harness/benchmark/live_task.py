@@ -155,7 +155,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ticks", type=int, default=35)
     ap.add_argument("--repeat", type=int, default=1)
-    ap.add_argument("--controls", default="semantic", choices=("semantic", "keyboard"))
+    ap.add_argument("--controls", default="semantic",
+                    choices=("semantic", "keyboard", "workflow"))
     args = ap.parse_args()
 
     bridge = Bridge()

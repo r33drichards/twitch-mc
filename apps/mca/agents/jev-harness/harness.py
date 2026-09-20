@@ -18,6 +18,7 @@ import time
 
 from bridge import Bridge, BridgeDown
 from dispatch import Dispatcher, VERB_DURATION_MS
+from workflow_dispatch import WorkflowDispatcher
 from memory import ContainerMemory, DecisionLog, EntityMemory, TickClock
 from questions import (act_state, build_act_questions, build_target_question,
                        target_state, ORDER_QUESTIONS)
@@ -48,14 +49,25 @@ VERB_TARGET_QUESTION = {
 }
 
 
-def target_for(verb, answers, state):
-    """The target for this verb, read from its own speculative answer."""
-    question = VERB_TARGET_QUESTION.get(verb)
+def target_for(verb, answers, state, controls="semantic"):
+    """The target for this verb, read from its own answer.
+
+    The workflow verbs have their own map; looking them up in the semantic one
+    returned None for every `take`, which the retry loop then read as "this verb
+    is impossible here" and dropped.
+    """
+    if controls == "workflow":
+        from questions import WORKFLOW_TARGET_FOR_VERB
+        question = WORKFLOW_TARGET_FOR_VERB.get(verb)
+    else:
+        question = VERB_TARGET_QUESTION.get(verb)
     if not question:
         return None
     choice = (answers.get(question) or {}).get("choice")
     if not choice or choice == "none":
         return None
+    if question == "target_container_item":
+        return {"item": choice}
     if question == "target_look":
         return {"look": choice}
     if question == "target_slot":
@@ -191,7 +203,8 @@ class Harness:
         self._order_mtime = self._mtime(order_path)
         self.dry_run = dry_run
         self.events = EventStream(bridge)
-        self.dispatcher = Dispatcher(bridge)
+        self.dispatcher = (WorkflowDispatcher(bridge) if controls == "workflow"
+                           else Dispatcher(bridge))
         self.entities = EntityMemory()
         self.containers = ContainerMemory()
         self.decisions = DecisionLog()
@@ -291,11 +304,12 @@ class Harness:
                                                  controls=self.controls))
             answers = answer["answers"]
             verb = answers["act"]["choice"]
-            asked = build_target_question(verb, state)
+            asked = build_target_question(verb, state, controls=self.controls)
             if not asked:
                 break
             name, question = asked
-            target_answer = jev.ask(target_state(verb, state), {name: question})
+            target_answer = jev.ask(target_state(verb, state, controls=self.controls),
+                                    {name: question})
             answers[name] = target_answer["answers"][name]
             answer["latency_ms"] = (answer.get("latency_ms", 0)
                                     + target_answer.get("latency_ms", 0))
@@ -303,7 +317,7 @@ class Harness:
                 answer.setdefault("usage", {})[field] = (
                     answer.get("usage", {}).get(field, 0)
                     + target_answer.get("usage", {}).get(field, 0))
-            target = target_for(verb, answers, state)
+            target = target_for(verb, answers, state, controls=self.controls)
             if target is not None:
                 break
             impossible.append(verb)
@@ -406,7 +420,8 @@ def main():
     ap.add_argument("--max-ticks", type=int, default=None)
     ap.add_argument("--dry-run", action="store_true", help="decide and log, execute nothing")
     ap.add_argument("--no-trace", action="store_true")
-    ap.add_argument("--controls", choices=("semantic", "keyboard"), default="semantic",
+    ap.add_argument("--controls", choices=("semantic", "keyboard", "workflow"),
+                    default="semantic",
                     help="keyboard = only the controls a person has at a keyboard, "
                          "every verb parameterless and no target questions")
     args = ap.parse_args()

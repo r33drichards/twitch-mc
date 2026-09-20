@@ -75,6 +75,58 @@ ACT_CRITERIA = {
     "drop_item": "Drop what you are holding.",
 }
 
+# Deterministic actions. Each one ends in a state you can name, so the model is
+# choosing the next step of a workflow rather than steering a body tick by tick.
+WORKFLOW_CRITERIA = {
+    "go_to": "Walk to something until it is within arm's reach. Use this when what "
+             "you want is too far away to open or hit.",
+    "open": "Open a container — walking to it first if needed — and end with its "
+            "contents in front of you.",
+    "take": "Take a stack of one item out of the container that is open, into your "
+            "own inventory. Whatever the order needs from what is inside comes out "
+            "this way.",
+    "close": "Close the container that is open. Right only once nothing inside is "
+             "worth taking.",
+    "equip": "Put an item you are carrying into your hand. Nothing you do uses an "
+             "item unless it is the one in your hand.",
+    "throw_at": "Throw what is in your hand at a creature. This turns to face it and "
+                "allows for the drop over distance, so it hits what you name.",
+    "attack": "Walk into range of a creature and swing at it with what you are holding.",
+    "eat": "Eat something you are carrying, restoring food.",
+    "wait": "Do nothing for a moment.",
+    "done": "The order is finished.",
+}
+
+WORKFLOW_VERBS = tuple(WORKFLOW_CRITERIA)
+
+WORKFLOW_WITH_SCREEN_OPEN = ("take", "close", "equip", "wait", "done")
+
+WORKFLOW_TARGET_FOR_VERB = {
+    "go_to": "target_place",
+    "open": "target_place",
+    "take": "target_container_item",
+    "equip": "target_item",
+    "eat": "target_item",
+    "throw_at": "target_entity",
+    "attack": "target_entity",
+}
+
+
+def container_item_candidates(state):
+    """The distinct items inside the open container."""
+    container = state.get("container") or {}
+    options = {}
+    for slot in container.get("slots") or []:
+        item = slot.get("id")
+        if not item:
+            continue
+        name = str(item).split(":")[-1]
+        options.setdefault(str(item), f"{name} in the container")
+    if not options:
+        options["none"] = "The container holds nothing."
+    return options
+
+
 ACT_INSTRUCTIONS = (
     "Choose the single next physical action for the bot, given `order` and the world "
     "state. The action you choose runs for the time listed in `tick.verb_duration_ms`, "
@@ -279,6 +331,18 @@ KEYBOARD_VERBS = FULL_KEYBOARD_VERBS
 
 
 def available_verbs(state, controls="semantic"):
+    if controls == "workflow":
+        if state.get("container"):
+            return [v for v in WORKFLOW_VERBS if v in WORKFLOW_WITH_SCREEN_OPEN]
+        offered = [v for v in WORKFLOW_VERBS if v not in ("take", "close")]
+        # Preconditions decide what is on the menu. A thrown item stops at the
+        # first thing it meets, so with nothing in view there is nothing to
+        # throw at — the bot refused fifteen throws in a row for want of line
+        # of sight and never thought to walk somewhere it had some.
+        if not [e for e in (state.get("in_frame") or []) if isinstance(e, dict)]:
+            offered = [v for v in offered if v != "throw_at"]
+        return offered
+
     """The verbs this situation actually allows, in criteria order."""
     if controls == "keyboard":
         # A screen being open changes nothing here: the keys still work, and
@@ -338,13 +402,18 @@ def build_candidates(state):
     return candidates
 
 
+def _criteria_for(controls):
+    return WORKFLOW_CRITERIA if controls == "workflow" else ACT_CRITERIA
+
+
 def build_questions(state, controls="semantic"):
     """The one batch asked every tick."""
     questions = {
         "act": {
             "type": "choice",
             "instructions": ACT_INSTRUCTIONS,
-            "criteria": {v: ACT_CRITERIA[v] for v in available_verbs(state, controls)},
+            "criteria": {v: _criteria_for(controls)[v]
+                         for v in available_verbs(state, controls)},
         },
         "target_entity": {
             "type": "choice",
@@ -458,6 +527,7 @@ _TARGET_BUILDERS = {
     "target_item": item_candidates,
     "target_slot": slot_candidates,
     "target_look": look_candidates,
+    "target_container_item": container_item_candidates,
 }
 
 _TARGET_SUBJECT = {
@@ -466,6 +536,7 @@ _TARGET_SUBJECT = {
     "target_item": "item",
     "target_slot": "slot of the open container",
     "target_look": "direction",
+    "target_container_item": "item inside the open container",
 }
 
 # Only the parts of state the second question can actually use.
@@ -478,6 +549,7 @@ _TARGET_STATE_KEYS = {
     "target_item": ("self", "order", "inventory", "craftable"),
     "target_slot": ("self", "order", "inventory", "container"),
     "target_look": ("self", "order", "looking_at", "in_frame", "out_of_frame"),
+    "target_container_item": ("self", "order", "inventory", "container"),
 }
 
 
@@ -552,9 +624,10 @@ def build_act_questions(state, without=(), controls="semantic"):
     return questions
 
 
-def build_target_question(verb, state):
+def build_target_question(verb, state, controls="semantic"):
     """Phase two: the one target question belonging to an already-chosen verb."""
-    name = TARGET_QUESTION_FOR_VERB.get(verb)
+    name = (WORKFLOW_TARGET_FOR_VERB.get(verb) if controls == "workflow"
+            else TARGET_QUESTION_FOR_VERB.get(verb))
     if not name:
         return None
     return name, {
@@ -568,9 +641,10 @@ def build_target_question(verb, state):
     }
 
 
-def target_state(verb, state):
+def target_state(verb, state, controls="semantic"):
     """The slice of state the second question needs, and nothing else."""
-    name = TARGET_QUESTION_FOR_VERB.get(verb)
+    name = (WORKFLOW_TARGET_FOR_VERB.get(verb) if controls == "workflow"
+            else TARGET_QUESTION_FOR_VERB.get(verb))
     if not name:
         return {}
     return {k: state.get(k) for k in _TARGET_STATE_KEYS[name] if k in state}
