@@ -153,7 +153,7 @@ class TestShape(unittest.TestCase):
     def test_top_level_keys_are_fixed(self):
         s = state.build_state(FakeBridge())
         self.assertEqual(set(s), {"self", "hazards", "in_frame", "out_of_frame", "craftable",
-                                  "inventory", "stations", "container", "looking_at", "has_weapon",
+                                  "inventory", "stations", "container", "looking_at", "has_weapon", "aggressive_nearby",
                                   "order", "errors", "captured_at"})
 
     def test_self_keys_are_fixed(self):
@@ -398,7 +398,7 @@ class TestBudget(unittest.TestCase):
         s = self.snapshot()
         old = {k: v for k, v in s.items()
                if k not in ("inventory", "stations", "container")}
-        self.assertLess(self.size(old), 2400,
+        self.assertLess(self.size(old), 2500,
                         f"core snapshot grew to {self.size(old)} bytes")
 
     def test_inventory_stays_a_few_hundred_bytes(self):

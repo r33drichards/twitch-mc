@@ -95,6 +95,9 @@ WORKFLOW_CRITERIA = {
     "eat": "Eat something you are carrying, restoring food.",
     "acquire_weapon": "Get a weapon into your hand, wherever one has to be found — "
                       "the pack, or the containers around you. Ends armed.",
+    "aggravate_piglins": "Provoke the piglins by throwing something at one, fetching "
+                         "the thrown item first if you carry none. Ends with a piglin "
+                         "coming for you, or says it could not reach one.",
     "attack_piglins": "Take up the spot the farm is fought from and swing at whatever "
                       "is in reach there. Ends having fought, or having found nothing "
                       "close enough to hit.",
@@ -344,6 +347,9 @@ def available_verbs(state, controls="semantic"):
         # succeed and change nothing.
         if state.get("has_weapon"):
             offered = [v for v in offered if v != "acquire_weapon"]
+        # Nothing to provoke while something is already coming for you.
+        if state.get("aggressive_nearby"):
+            offered = [v for v in offered if v != "aggravate_piglins"]
         # Preconditions decide what is on the menu. A thrown item stops at the
         # first thing it meets, so with nothing in view there is nothing to
         # throw at — the bot refused fifteen throws in a row for want of line

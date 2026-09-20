@@ -17,6 +17,7 @@ import time
 
 from ballistics import launch_pitch
 from geometry import relative_bearing
+from pathfinding import find_path, is_standable, nearest_standable
 
 EYE_HEIGHT = 1.62
 AIM_HEIGHT = 1.0          # aim at a mob's middle, not the ground under it
@@ -110,11 +111,84 @@ class Actions:
         return _ok("faced", yaw=round(yaw, 1), pitch=round(pitch, 1))
 
     def approach(self, target, reach=REACH):
-        """End within `reach` of `target`, or say why not."""
+        """End within `reach` of `target`, walking round whatever is in the way.
+
+        Walking straight at things worked until something stood between them:
+        a chest, a corner, the barrier. The platform fits in one block scan, so
+        the route is searched first and then walked waypoint by waypoint.
+        """
+        if self._distance_to(target) <= reach:
+            return _ok("in reach", changed=False,
+                       distance=round(self._distance_to(target), 1))
+
+        route = self._route_to(target, reach)
+        if route is None:
+            # No route found; fall back to walking at it, which is enough when
+            # the only thing in the way is open floor.
+            return self._walk_straight(target, reach)
+
+        for waypoint in route:
+            if self._distance_to(target) <= reach:
+                break
+            self._step_to(waypoint)
+
+        distance = self._distance_to(target)
+        if distance <= reach:
+            return _ok("walked there", distance=round(distance, 1), steps=len(route))
+        raise ActionError(f"followed the route and am still {round(distance, 1)}m away")
+
+    def _blocks_around(self, radius=10):
+        """A block lookup over one scan, treating anything unseen as air."""
+        scan = (self.bridge.rpc("world.blocks_around", {"radius": radius}) or {})
+        known = {(b["x"], b["y"], b["z"]): b.get("id")
+                 for b in (scan.get("blocks") or [])}
+        return lambda x, y, z: known.get((x, y, z), "minecraft:air")
+
+    def _route_to(self, target, reach):
+        """Waypoints from here to a block within `reach` of the target."""
+        me = self._self()
+        look = self._blocks_around()
+        start = (math.floor(me["x"]), math.floor(me["y"]), math.floor(me["z"]))
+        if not is_standable(look, *start):
+            # Standing on a chest or slab puts the feet inside the block below,
+            # so the block the player "is in" is not standable by the search.
+            for dy in (1, -1, 2, -2):
+                candidate = (start[0], start[1] + dy, start[2])
+                if is_standable(look, *candidate):
+                    start = candidate
+                    break
+        tx, ty, tz = self._target_point(target)
+        goal = (math.floor(tx), math.floor(ty), math.floor(tz))
+        if not is_standable(look, *goal):
+            goal = nearest_standable(look, goal, radius=max(2, int(reach)))
+        if goal is None:
+            return None
+        return find_path(look, start, goal)
+
+    def _step_to(self, waypoint):
+        """Walk onto one block, jumping if it is a step up."""
+        x, y, z = waypoint
+        centre = {"x": x, "y": y, "z": z}
+        for _ in range(6):
+            me = self._self()
+            flat = math.dist([me["x"], me["z"]], [x + 0.5, z + 0.5])
+            if flat < 0.6:
+                return True
+            self.face(centre)
+            if y > math.floor(me["y"]):
+                self.bridge.rpc("player.press_key", {"key": "jump", "action": "press"})
+            self.bridge.rpc("player.press_key", {"key": "forward", "action": "press"})
+            self._sleep(WALK_TICK_MS / 1000.0)
+            self.bridge.rpc("player.press_key", {"key": "forward", "action": "release"})
+            self.bridge.rpc("player.press_key", {"key": "jump", "action": "release"})
+            self._sleep(0.1)
+        return False
+
+    def _walk_straight(self, target, reach):
+        """The old behaviour, for when no route could be searched."""
         for step in range(MAX_WALK_STEPS):
-            distance = self._distance_to(target)
-            if distance <= reach:
-                return _ok("in reach", changed=step > 0, distance=round(distance, 1))
+            if self._distance_to(target) <= reach:
+                return _ok("in reach", changed=step > 0)
             self.face(target)
             before = self._self()
             self.bridge.rpc("player.press_key", {"key": "forward", "action": "press"})
@@ -122,10 +196,9 @@ class Actions:
             self.bridge.rpc("player.press_key", {"key": "forward", "action": "release"})
             self._sleep(0.15)
             after = self._self()
-            moved = math.dist([before["x"], before["z"]], [after["x"], after["z"]])
-            if moved < 0.05:
+            if math.dist([before["x"], before["z"]], [after["x"], after["z"]]) < 0.05:
                 raise ActionError(
-                    f"blocked {round(self._distance_to(target), 1)}m away; the way is not clear")
+                    f"blocked {round(self._distance_to(target), 1)}m away; no way through")
         raise ActionError(f"still {round(self._distance_to(target), 1)}m away after walking")
 
     def open_container(self, position):
@@ -294,6 +367,74 @@ class Actions:
         found.sort(key=lambda b: math.dist([me["x"], me["y"], me["z"]],
                                            [b["x"] + 0.5, b["y"] + 0.5, b["z"] + 0.5]))
         return [{"x": b["x"], "y": b["y"], "z": b["z"]} for b in found]
+
+    def aggravate_piglins(self, thrown_item="minecraft:snowball", max_throws=4):
+        """End with a piglin angry, having thrown something at one.
+
+        Idempotent: if anything nearby is already coming for you there is
+        nothing to provoke, and it says so without spending a snowball.
+        """
+        if self._any_aggressive():
+            return _ok("already angry", changed=False)
+
+        if not self._carrying(thrown_item):
+            self._take_from_containers(thrown_item)
+        self.equip(thrown_item)
+
+        for _ in range(max_throws):
+            target = self._nearest_visible_hostile()
+            if target is None:
+                # Nothing visible from here; close the distance and look again.
+                nearest = self._nearest_hostile()
+                if nearest is None:
+                    raise ActionError("no piglin anywhere nearby to provoke")
+                self.approach(nearest, reach=max(4.0, nearest.get("dist", 20) - 4.0))
+                target = self._nearest_visible_hostile()
+                if target is None:
+                    raise ActionError("no line of sight to any piglin from here")
+            self.throw_at(target["id"])
+            self._sleep(0.6)
+            if self._any_aggressive():
+                return _ok("provoked", at=target.get("type"),
+                           distance=round(target.get("dist", 0), 1))
+        return _ok("threw without angering anything", changed=True,
+                   thrown=max_throws)
+
+    def _any_aggressive(self):
+        found = json.loads(self.bridge.eval("return api:entitiesJson(24)"))
+        return any(e.get("aggressive") for e in found)
+
+    def _carrying(self, item):
+        return self._count(item) > 0
+
+    def _nearest_hostile(self):
+        found = json.loads(self.bridge.eval("return api:entitiesJson(32)"))
+        alive = [e for e in found if e.get("hostile") and e.get("living")]
+        return min(alive, key=lambda e: e.get("dist", 999)) if alive else None
+
+    def _nearest_visible_hostile(self):
+        found = json.loads(self.bridge.eval("return api:entitiesJson(32)"))
+        alive = sorted((e for e in found if e.get("hostile") and e.get("living")),
+                       key=lambda e: e.get("dist", 999))
+        for e in alive[:6]:
+            if self.bridge.eval(f"return api:canSee({int(e['id'])})"):
+                return e
+        return None
+
+    def _take_from_containers(self, item, max_containers=8):
+        """Find `item` in the containers around and carry some."""
+        for position in self._containers_nearby(8)[:max_containers]:
+            try:
+                self.open_container(position)
+            except ActionError:
+                continue
+            inside = (self._container().get("containerSlots") or [])
+            if any(s.get("id") == item for s in inside):
+                self.take(item)
+                self.close_container()
+                return _ok("took from a container", item=item)
+            self.close_container()
+        raise ActionError(f"no {item.split(':')[-1]} in any container nearby")
 
     def attack_piglins(self, spot=None, max_swings=MAX_SWINGS):
         """Stand where the farm is fought from, and swing at what comes.

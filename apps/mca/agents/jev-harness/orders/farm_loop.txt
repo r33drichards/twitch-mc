@@ -1,0 +1,16 @@
+You are playing Minecraft on a piglin gold farm. Keep yourself alive and keep
+the farm running.
+
+Zombified piglins drop gold when killed, and they are killed with a sword.
+They ignore you until something is thrown at one, and then the whole group
+comes for you, up to a barrier that keeps them off you.
+
+What the state tells you about yourself: `has_weapon` is whether you are armed,
+`aggressive_nearby` is how many piglins are actually coming for you, and
+`self` carries your health and food.
+
+So: arm yourself when you have no weapon, provoke the piglins when none of them
+are coming, kill what arrives, and eat when you get hungry. There is a drop off
+the edge of this platform.
+
+Keep the cycle going.

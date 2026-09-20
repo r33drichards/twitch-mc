@@ -582,6 +582,8 @@ def build_state(bridge, order=None) -> dict:
         "stations": stations,
         "container": _build_container(screen),
         "has_weapon": _has_weapon(inventory),
+        "aggressive_nearby": sum(1 for e in in_frame + out_of_frame
+                                 if e.get("aggressive")),
         "looking_at": _build_looking_at(crosshair, me),
         "craftable": _build_craftable(recipes),
         "order": order,
