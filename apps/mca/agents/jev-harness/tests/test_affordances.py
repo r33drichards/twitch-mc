@@ -182,3 +182,43 @@ class TestEmptySlotKeysAreNotOffered(unittest.TestCase):
         bare = dict(self.HOTBAR, inventory={"counts": {}, "held": {}})
         offered = set(available_verbs(bare, controls="keyboard"))
         self.assertIn("slot_4", offered)
+
+
+class TestRecentlySearchedContainersAreNotOffered(unittest.TestCase):
+    """Opening a container you just looked in cannot tell you anything new.
+
+    A live run opened the chest at its feet fifteen times while the shulker it
+    needed sat five metres away, unsearched. Nothing changes between those
+    opens, so the option is a no-op in the only sense that matters.
+    """
+
+    WITH_MEMORY = {
+        "self": {}, "order": "x", "in_frame": [], "out_of_frame": [],
+        "inventory": {"counts": {}, "held": {"slot": 0, "id": "minecraft:sword"}},
+        "craftable": [], "container": None,
+        "stations": {"near": [
+            {"id": "chest", "x": 5736, "y": 230, "z": 436, "dist": 1.0,
+             "desc": "chest at (5736,230,436) — ahead, 1.0m, in reach"},
+            {"id": "shulker_box", "x": 5732, "y": 232, "z": 437, "dist": 5.4,
+             "desc": "shulker_box at (5732,232,437) — ahead-right, 5.4m, out of reach"},
+        ], "more": {}, "desc": "two containers"},
+        "containers_seen": [
+            {"x": 5736, "y": 230, "z": 436, "age_s": 1.2, "kinds": ["dirt"],
+             "desc": "chest at (5736,230,436) — looked 1.2s ago, held dirt"},
+        ],
+    }
+
+    def test_a_just_searched_container_is_not_a_place_candidate(self):
+        from questions import place_candidates
+        options = place_candidates(self.WITH_MEMORY)
+        self.assertNotIn("5736,230,436", options)
+
+    def test_the_unsearched_one_still_is(self):
+        from questions import place_candidates
+        self.assertIn("5732,232,437", place_candidates(self.WITH_MEMORY))
+
+    def test_it_comes_back_once_the_memory_ages_out(self):
+        from questions import place_candidates
+        stale = dict(self.WITH_MEMORY)
+        stale["containers_seen"] = [dict(self.WITH_MEMORY["containers_seen"][0], age_s=90.0)]
+        self.assertIn("5736,230,436", place_candidates(stale))

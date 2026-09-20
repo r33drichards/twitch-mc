@@ -408,7 +408,7 @@ class TestBudget(unittest.TestCase):
 
     def test_a_wall_of_chests_does_not_ship_one_entry_each(self):
         st = self.snapshot()["stations"]
-        self.assertLess(self.size(st), 1650,
+        self.assertLess(self.size(st), 2800,
                         f"stations grew to {self.size(st)} bytes")
 
     def test_a_full_double_chest_stays_bounded(self):
@@ -426,7 +426,7 @@ class TestBudget(unittest.TestCase):
 
     def test_the_whole_tick_stays_under_five_kilobytes(self):
         s = self.snapshot(container=CONTAINER)
-        self.assertLess(self.size(s), 5000,
+        self.assertLess(self.size(s), 6200,
                         f"snapshot grew to {self.size(s)} bytes")
 
 

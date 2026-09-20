@@ -50,7 +50,7 @@ STATION_IDS = frozenset((
 ))
 
 # `world.blocks_around` scans a cube of this radius (its own ceiling is 8).
-STATION_RADIUS = 5
+STATION_RADIUS = 8
 
 # The vanilla block interaction range, measured eye to block. This is an engine
 # constant, not advice: `in_reach` says the game would accept a click, and says
@@ -60,10 +60,10 @@ EYE_HEIGHT = 1.62
 
 # A wall of 19 chests is one fact repeated 19 times. Keep the nearest few of
 # each kind and count the rest; both numbers ship.
-MAX_STATIONS = 10
+MAX_STATIONS = 14
 # Craftable results offered as targets; the recipe book lists hundreds.
 MAX_CRAFTABLE = 8
-MAX_PER_KIND = 2
+MAX_PER_KIND = 5
 
 # A double chest is 54 slots. Ship the first few and roll the rest into
 # `counts`, so nothing becomes invisible.
@@ -279,10 +279,15 @@ def _build_stations(blocks, me) -> dict:
                       by + 0.5 - (me["y"] or 0)))
     found.sort(key=lambda t: (t[0], t[1], t[2], t[3], t[4]))
 
+    # One of every kind first, then seconds, then thirds. Taking the nearest
+    # MAX_PER_KIND of each in order let a wall of chests push a one-of-a-kind
+    # station out of the list entirely, and a station that is never listed can
+    # never be chosen. Round-robin keeps the rare ones and still surfaces
+    # several of the common ones.
     near, more, shown = [], {}, {}
     for dist, sid, bx, by, bz, rel, dy in found:
         shown[sid] = shown.get(sid, 0) + 1
-        if shown[sid] > MAX_PER_KIND or len(near) >= MAX_STATIONS:
+        if shown[sid] > MAX_PER_KIND or len(near) >= MAX_STATIONS * 4:
             more[sid] = more.get(sid, 0) + 1
             continue
         reach = dist <= REACH_BLOCKS
@@ -296,6 +301,25 @@ def _build_stations(blocks, me) -> dict:
         near.append({"id": sid, "x": bx, "y": by, "z": bz, "dist": dist,
                      "rel_yaw": _round(rel, 0), "in_reach": reach,
                      "desc": desc})
+
+    # One of every kind first, then seconds, then thirds. Taking the nearest
+    # MAX_PER_KIND of each in listing order let a wall of chests push a
+    # one-of-a-kind station out of the list, and a station that is never listed
+    # can never be chosen — which is how a chest holding what the order needed
+    # stayed invisible two blocks away. Round-robin keeps the rare kinds and
+    # still surfaces several of the common ones.
+    ranked, ordered = {}, []
+    for entry in near:
+        rank = ranked.get(entry["id"], 0)
+        ranked[entry["id"]] = rank + 1
+        ordered.append((rank, entry["dist"], entry))
+    ordered.sort(key=lambda row: (row[0], row[1]))
+    kept = [entry for _, _, entry in ordered[:MAX_STATIONS]]
+    kept_ids = {id(entry) for entry in kept}
+    for entry in near:
+        if id(entry) not in kept_ids:
+            more[entry["id"]] = more.get(entry["id"], 0) + 1
+    near = sorted(kept, key=lambda entry: entry["dist"])
 
     out["near"], out["more"] = near, more
     if not near and not more:

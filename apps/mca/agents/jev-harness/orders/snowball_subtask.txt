@@ -1,0 +1,11 @@
+You are playing Minecraft on a piglin gold farm. Stay alive.
+
+The snowballs are kept in the shulker box beside you. A snowball thrown at a zombified
+piglin angers the whole group into coming for you, which is how the farm gets
+fed.
+
+Things you cannot see for yourself: `aggressive` is the only sign a piglin is
+actually coming for you, since `hostile` only means it belongs to a monster
+class; and there is a drop off the edge of this platform.
+
+Done once a piglin is aggressive.

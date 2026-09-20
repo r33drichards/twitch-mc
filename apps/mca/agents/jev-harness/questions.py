@@ -147,12 +147,33 @@ def entity_candidates(state):
     return candidates
 
 
+# How long a container stays "just looked in". Long enough to break a loop,
+# short enough that a farm's chest can be checked again later.
+SEARCHED_RECENTLY_S = 45.0
+
+
+def _recently_searched(state):
+    """Positions of containers looked in moments ago, however malformed the memory."""
+    out = set()
+    for entry in state.get("containers_seen") or []:
+        if not isinstance(entry, dict):
+            continue
+        if (entry.get("age_s") or 0) < SEARCHED_RECENTLY_S:
+            out.add(f"{entry.get('x')},{entry.get('y')},{entry.get('z')}")
+    return out
+
+
 def place_candidates(state):
-    """Block positions worth going to or opening, plus creatures to approach."""
+    """Block positions worth going to or opening, plus creatures to approach.
+
+    Containers searched moments ago are left out: nothing has changed inside
+    since, so offering them again only invites the same open-and-close loop.
+    """
+    searched = _recently_searched(state)
     candidates = {}
     for st in _stations(state)[:8]:
         key = f"{st['x']},{st['y']},{st['z']}" if "x" in st else st.get("id")
-        if key:
+        if key and str(key) not in searched:
             candidates[str(key)] = st.get("desc") or str(key)
     for e in list(state.get("in_frame") or [])[:4]:
         candidates[str(e["id"])] = e.get("desc") or e.get("type") or "entity"
@@ -439,7 +460,10 @@ _TARGET_SUBJECT = {
 # Only the parts of state the second question can actually use.
 _TARGET_STATE_KEYS = {
     "target_entity": ("self", "order", "in_frame", "out_of_frame"),
-    "target_place": ("self", "order", "hazards", "stations", "in_frame"),
+    # containers_seen belongs here: choosing which container to open without it
+    # means choosing blind, and a live run opened the same chest eighteen times.
+    "target_place": ("self", "order", "hazards", "stations", "in_frame",
+                     "containers_seen"),
     "target_item": ("self", "order", "inventory", "craftable"),
     "target_slot": ("self", "order", "inventory", "container"),
     "target_look": ("self", "order", "looking_at", "in_frame", "out_of_frame"),
@@ -461,6 +485,25 @@ def act_state(state):
     if container:
         # One line is enough to know a screen is up; the slots belong to phase two.
         slim["container"] = container.get("desc") or "a container is open"
+    # A few phrases for what is worth walking to or opening. Without these the
+    # act question cannot see that any container exists — a live run held still
+    # for twenty-four ticks with an unsearched shulker four metres away, because
+    # nothing in its state said so. Only unsearched ones, and only the phrases.
+    searched = _recently_searched(state)
+    # One of each kind first. Sorted by distance alone the list is four chests
+    # and the shulker box that matters never appears.
+    by_kind, worth_going_to = {}, []
+    stations = [s for s in _stations(state) if isinstance(s, dict)]
+    for station in sorted(stations, key=lambda s: s.get("dist", 0)):
+        key = f"{station.get('x')},{station.get('y')},{station.get('z')}"
+        if key in searched:
+            continue
+        rank = by_kind.get(station.get("id"), 0)
+        by_kind[station["id"]] = rank + 1
+        worth_going_to.append((rank, station.get("dist", 0), station.get("desc") or key))
+    worth_going_to = [text for _, _, text in sorted(worth_going_to)[:5]]
+    if worth_going_to:
+        slim["nearby"] = worth_going_to
     return slim
 
 
