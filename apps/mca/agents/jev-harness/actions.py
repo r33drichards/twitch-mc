@@ -27,6 +27,10 @@ MELEE_REACH = 3.0         # the server refuses a swing from further than this
 # sightline to the piglins. The spots nearer the mobs have no line of sight —
 # swinging there hits the barrier.
 SAFE_SPOT = {"x": 5731, "y": 231, "z": 439}
+# The chest beside the killing area, where the farm's drops land. It is where
+# swords actually are, and it sits just outside a short search from the far
+# side of the platform, so it is tried first rather than found by luck.
+WEAPON_CHEST = {"x": 5730, "y": 230, "z": 439}
 MAX_SWINGS = 12
 WALK_TICK_MS = 250
 MAX_WALK_STEPS = 12
@@ -63,6 +67,8 @@ class Actions:
     def __init__(self, bridge, sleep=time.sleep):
         self.bridge = bridge
         self._sleep = sleep
+        # Where a weapon was last found, tried first next time.
+        self._weapon_seen_at = None
 
     # -- reading the world -------------------------------------------------
 
@@ -299,7 +305,7 @@ class Actions:
         after = self._self().get("food", 20)
         return _ok("ate", gained=after - before)
 
-    def acquire_weapon(self, search_radius=8, max_containers=8):
+    def acquire_weapon(self, search_radius=12, max_containers=14):
         """End holding a weapon, wherever one has to be found.
 
         Idempotent: already armed is a success that changed nothing. Otherwise
@@ -331,8 +337,17 @@ class Actions:
             except ActionError:
                 pass
 
+        # The drop chest first, then anywhere a weapon was found before, then
+        # everything else nearest-first.
+        preferred = [dict(WEAPON_CHEST)]
+        if self._weapon_seen_at and self._weapon_seen_at not in preferred:
+            preferred.insert(0, dict(self._weapon_seen_at))
+        searched_positions = {(p["x"], p["y"], p["z"]) for p in preferred}
+        order = preferred + [p for p in self._containers_nearby(search_radius)
+                             if (p["x"], p["y"], p["z"]) not in searched_positions]
+
         tried, last_error = 0, "nothing searched"
-        for position in self._containers_nearby(search_radius):
+        for position in order:
             if tried >= max_containers:
                 break
             tried += 1
@@ -351,6 +366,7 @@ class Actions:
             self.take(item)
             self.close_container()
             self.equip(item)
+            self._weapon_seen_at = dict(position)
             return _ok("armed from a container", weapon=item,
                        found_in=f"{position['x']},{position['y']},{position['z']}",
                        searched=tried)

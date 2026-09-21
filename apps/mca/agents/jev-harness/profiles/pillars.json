@@ -1,0 +1,10 @@
+{
+  "name": "pillars-of-fortune",
+  "server": "play.cubecraft.net",
+  "state": "inventory only — pack, hotbar, worn armour, hunger, health, newest arrival",
+  "tick_seconds": 1.5,
+  "hotbar_plan": {"1": "weapon", "2": "blocks", "3": "food"},
+  "reflexes": {"edge_guard": true, "clutch": true, "hz": 10},
+  "policy_file": "orders/pillars_inventory.txt",
+  "notes": "Policy is written from observation, not guessed: run observe.py for a couple of games first."
+}
