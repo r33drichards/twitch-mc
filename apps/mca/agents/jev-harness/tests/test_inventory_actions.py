@@ -102,3 +102,40 @@ class TestActions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNoDowngrades(unittest.TestCase):
+    """The live failure: a wooden axe must not displace a netherite sword."""
+
+    def test_a_worse_weapon_does_not_take_the_slot(self):
+        bridge = FakeBridge([
+            {"slot": 0, "id": "minecraft:netherite_sword", "count": 1},
+            {"slot": 17, "id": "minecraft:wooden_axe", "count": 1},
+        ])
+        result = InventoryActions(bridge, sleep=lambda s: None).to_hotbar(
+            "minecraft:wooden_axe", 0)
+        self.assertFalse(result["changed"])
+        self.assertEqual([m for m, _ in bridge.calls if m == "container.click"], [])
+
+    def test_a_better_weapon_does(self):
+        bridge = FakeBridge([
+            {"slot": 0, "id": "minecraft:stone_sword", "count": 1},
+            {"slot": 17, "id": "minecraft:diamond_sword", "count": 1},
+        ])
+        result = InventoryActions(bridge, sleep=lambda s: None).to_hotbar(
+            "minecraft:diamond_sword", 0)
+        self.assertTrue(result["changed"])
+
+    def test_worse_armour_is_not_put_on(self):
+        bridge = FakeBridge([
+            {"slot": 38, "id": "minecraft:diamond_chestplate", "count": 1},
+            {"slot": 17, "id": "minecraft:leather_chestplate", "count": 1},
+        ])
+        result = InventoryActions(bridge, sleep=lambda s: None).wear(
+            "minecraft:leather_chestplate")
+        self.assertFalse(result["changed"])
+
+    def test_armour_for_a_bare_slot_is_put_on(self):
+        bridge = FakeBridge([{"slot": 17, "id": "minecraft:iron_boots", "count": 1}])
+        result = InventoryActions(bridge, sleep=lambda s: None).wear("minecraft:iron_boots")
+        self.assertTrue(result["changed"])

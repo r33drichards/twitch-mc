@@ -1,0 +1,11 @@
+{"event": "start", "at": 1789953498.7, "carried": {"minecraft:coarse_dirt": 1}, "where": {"minecraft:coarse_dirt": [0]}, "held": "minecraft:coarse_dirt", "slot": 0, "food": 20, "health": 20.0, "pos": [7.1, 64, 13991.4]}
+{"event": "gained", "item": "minecraft:axolotl_spawn_egg", "count": 1, "at": 1789953499.8, "food": 20, "health": 20.0, "held": "minecraft:coarse_dirt"}
+{"event": "gained", "item": "minecraft:oak_pressure_plate", "count": 1, "at": 1789953503.1, "food": 20, "health": 20.0, "held": "minecraft:coarse_dirt"}
+{"event": "lost", "item": "minecraft:coarse_dirt", "count": 1, "at": 1789953505.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:axolotl_spawn_egg", "count": 1, "at": 1789953505.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:oak_pressure_plate", "count": 1, "at": 1789953505.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953505.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953509.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953514.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:mossy_stone_brick_wall", "count": 1, "at": 1789953520.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:mossy_stone_brick_wall", "at": 1789953521.6, "food": 20, "health": 20.0, "held": "minecraft:mossy_stone_brick_wall"}

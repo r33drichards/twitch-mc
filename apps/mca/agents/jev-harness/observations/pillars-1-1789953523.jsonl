@@ -1,0 +1,393 @@
+{"event": "start", "at": 1789953523.2, "carried": {"minecraft:mossy_stone_brick_wall": 1, "minecraft:stripped_dark_oak_log": 1}, "where": {"minecraft:mossy_stone_brick_wall": [0], "minecraft:stripped_dark_oak_log": [1]}, "held": "minecraft:mossy_stone_brick_wall", "slot": 0, "food": 20, "health": 20.0, "pos": [7.7, 64, 992.0]}
+{"event": "lost", "item": "minecraft:mossy_stone_brick_wall", "count": 1, "at": 1789953525.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953525.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:stone_shovel", "count": 1, "at": 1789953526.6, "food": 20, "health": 20.0, "held": "minecraft:stripped_dark_oak_log"}
+{"event": "held", "item": "minecraft:stripped_dark_oak_log", "at": 1789953526.6, "food": 20, "health": 20.0, "held": "minecraft:stripped_dark_oak_log"}
+{"event": "lost", "item": "minecraft:stripped_dark_oak_log", "count": 1, "at": 1789953527.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953527.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:dark_oak_planks", "count": 4, "at": 1789953528.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:candle", "count": 1, "at": 1789953530.0, "food": 20, "health": 20.0, "held": "minecraft:candle"}
+{"event": "lost", "item": "minecraft:dark_oak_planks", "count": 4, "at": 1789953530.0, "food": 20, "health": 20.0, "held": "minecraft:candle"}
+{"event": "held", "item": "minecraft:candle", "at": 1789953530.0, "food": 20, "health": 20.0, "held": "minecraft:candle"}
+{"event": "gained", "item": "minecraft:dark_oak_planks", "count": 4, "at": 1789953531.1, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "lost", "item": "minecraft:candle", "count": 1, "at": 1789953531.1, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "held", "item": "minecraft:dark_oak_planks", "at": 1789953531.1, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "gained", "item": "minecraft:deepslate_coal_ore", "count": 1, "at": 1789953532.2, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "lost", "item": "minecraft:dark_oak_planks", "count": 1, "at": 1789953532.2, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "gained", "item": "minecraft:candle", "count": 1, "at": 1789953533.4, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "lost", "item": "minecraft:dark_oak_planks", "count": 1, "at": 1789953534.5, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "gained", "item": "minecraft:copper_trapdoor", "count": 1, "at": 1789953535.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:dark_oak_planks", "count": 2, "at": 1789953535.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953535.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:deepslate_coal_ore", "count": 1, "at": 1789953536.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:candle", "count": 1, "at": 1789953537.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:mangrove_slab", "count": 1, "at": 1789953539.0, "food": 20, "health": 20.0, "held": "minecraft:copper_trapdoor"}
+{"event": "held", "item": "minecraft:copper_trapdoor", "at": 1789953539.0, "food": 20, "health": 20.0, "held": "minecraft:copper_trapdoor"}
+{"event": "lost", "item": "minecraft:copper_trapdoor", "count": 1, "at": 1789953540.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953540.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:diorite_slab", "count": 1, "at": 1789953541.2, "food": 20, "health": 20.0, "held": "minecraft:mangrove_slab"}
+{"event": "held", "item": "minecraft:mangrove_slab", "at": 1789953541.2, "food": 20, "health": 20.0, "held": "minecraft:mangrove_slab"}
+{"event": "lost", "item": "minecraft:mangrove_slab", "count": 1, "at": 1789953544.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953544.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "hurt", "to": 16.0, "at": 1789953545.7, "food": 20, "health": 16.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:stone_shovel", "count": 1, "at": 1789953548.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:diorite_slab", "count": 1, "at": 1789953548.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953582.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953593.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:soul_soil", "count": 1, "at": 1789953599.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:nautilus_shell", "count": 1, "at": 1789953603.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:jungle_pressure_plate", "count": 1, "at": 1789953606.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:stone_bricks", "count": 1, "at": 1789953609.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:infested_stone_bricks", "count": 1, "at": 1789953611.4, "food": 20, "health": 20.0, "held": "minecraft:infested_stone_bricks"}
+{"event": "held", "item": "minecraft:infested_stone_bricks", "at": 1789953611.4, "food": 20, "health": 20.0, "held": "minecraft:infested_stone_bricks"}
+{"event": "gained", "item": "minecraft:netherite_block", "count": 1, "at": 1789953614.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:infested_stone_bricks", "count": 1, "at": 1789953614.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953614.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:netherite_block", "at": 1789953617.0, "food": 20, "health": 20.0, "held": "minecraft:netherite_block"}
+{"event": "gained", "item": "minecraft:stripped_oak_log", "count": 1, "at": 1789953618.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:netherite_block", "count": 1, "at": 1789953618.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953618.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:stripped_oak_log", "at": 1789953619.2, "food": 20, "health": 20.0, "held": "minecraft:stripped_oak_log"}
+{"event": "gained", "item": "minecraft:green_terracotta", "count": 1, "at": 1789953620.4, "food": 20, "health": 20.0, "held": "minecraft:green_terracotta"}
+{"event": "lost", "item": "minecraft:stripped_oak_log", "count": 1, "at": 1789953620.4, "food": 20, "health": 20.0, "held": "minecraft:green_terracotta"}
+{"event": "held", "item": "minecraft:green_terracotta", "at": 1789953620.4, "food": 20, "health": 20.0, "held": "minecraft:green_terracotta"}
+{"event": "gained", "item": "minecraft:oak_planks", "count": 4, "at": 1789953621.5, "food": 20, "health": 20.0, "held": "minecraft:green_terracotta"}
+{"event": "lost", "item": "minecraft:green_terracotta", "count": 1, "at": 1789953622.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953622.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:music_disc_ward", "count": 1, "at": 1789953623.7, "food": 20, "health": 20.0, "held": "minecraft:oak_planks"}
+{"event": "held", "item": "minecraft:oak_planks", "at": 1789953623.7, "food": 20, "health": 20.0, "held": "minecraft:oak_planks"}
+{"event": "lost", "item": "minecraft:oak_planks", "count": 2, "at": 1789953624.9, "food": 20, "health": 20.0, "held": "minecraft:oak_planks"}
+{"event": "lost", "item": "minecraft:oak_planks", "count": 2, "at": 1789953625.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953625.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:quartz_block", "count": 1, "at": 1789953627.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:quartz_block", "at": 1789953629.3, "food": 20, "health": 20.0, "held": "minecraft:quartz_block"}
+{"event": "gained", "item": "minecraft:compass", "count": 1, "at": 1789953630.4, "food": 20, "health": 20.0, "held": "minecraft:quartz_block"}
+{"event": "lost", "item": "minecraft:quartz_block", "count": 1, "at": 1789953631.6, "food": 20, "health": 20.0, "held": "minecraft:stone_bricks"}
+{"event": "held", "item": "minecraft:stone_bricks", "at": 1789953631.6, "food": 20, "health": 20.0, "held": "minecraft:stone_bricks"}
+{"event": "gained", "item": "minecraft:gray_glazed_terracotta", "count": 1, "at": 1789953632.7, "food": 20, "health": 20.0, "held": "minecraft:gray_glazed_terracotta"}
+{"event": "lost", "item": "minecraft:stone_bricks", "count": 1, "at": 1789953632.7, "food": 20, "health": 20.0, "held": "minecraft:gray_glazed_terracotta"}
+{"event": "held", "item": "minecraft:gray_glazed_terracotta", "at": 1789953632.7, "food": 20, "health": 20.0, "held": "minecraft:gray_glazed_terracotta"}
+{"event": "lost", "item": "minecraft:gray_glazed_terracotta", "count": 1, "at": 1789953633.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953633.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:nautilus_shell", "at": 1789953634.9, "food": 20, "health": 20.0, "held": "minecraft:nautilus_shell"}
+{"event": "gained", "item": "minecraft:strider_spawn_egg", "count": 1, "at": 1789953636.0, "food": 20, "health": 20.0, "held": "minecraft:soul_soil"}
+{"event": "held", "item": "minecraft:soul_soil", "at": 1789953636.0, "food": 20, "health": 20.0, "held": "minecraft:soul_soil"}
+{"event": "lost", "item": "minecraft:soul_soil", "count": 1, "at": 1789953638.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953638.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:weeping_vines", "count": 1, "at": 1789953639.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:jungle_pressure_plate", "count": 1, "at": 1789953639.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:nautilus_shell", "count": 1, "at": 1789953640.5, "food": 20, "health": 20.0, "held": "minecraft:weeping_vines"}
+{"event": "held", "item": "minecraft:weeping_vines", "at": 1789953640.5, "food": 20, "health": 20.0, "held": "minecraft:weeping_vines"}
+{"event": "gained", "item": "minecraft:black_bed", "count": 1, "at": 1789953641.6, "food": 20, "health": 20.0, "held": "minecraft:music_disc_ward"}
+{"event": "lost", "item": "minecraft:weeping_vines", "count": 1, "at": 1789953641.6, "food": 20, "health": 20.0, "held": "minecraft:music_disc_ward"}
+{"event": "held", "item": "minecraft:music_disc_ward", "at": 1789953641.6, "food": 20, "health": 20.0, "held": "minecraft:music_disc_ward"}
+{"event": "lost", "item": "minecraft:music_disc_ward", "count": 1, "at": 1789953642.7, "food": 20, "health": 20.0, "held": "minecraft:compass"}
+{"event": "held", "item": "minecraft:compass", "at": 1789953642.7, "food": 20, "health": 20.0, "held": "minecraft:compass"}
+{"event": "lost", "item": "minecraft:compass", "count": 1, "at": 1789953643.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953643.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:waxed_exposed_copper_bulb", "count": 1, "at": 1789953645.0, "food": 20, "health": 20.0, "held": "minecraft:black_bed"}
+{"event": "held", "item": "minecraft:black_bed", "at": 1789953645.0, "food": 20, "health": 20.0, "held": "minecraft:black_bed"}
+{"event": "lost", "item": "minecraft:black_bed", "count": 1, "at": 1789953647.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953647.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:stripped_birch_log", "count": 1, "at": 1789953648.3, "food": 20, "health": 20.0, "held": "minecraft:stripped_birch_log"}
+{"event": "held", "item": "minecraft:stripped_birch_log", "at": 1789953648.3, "food": 20, "health": 20.0, "held": "minecraft:stripped_birch_log"}
+{"event": "gained", "item": "minecraft:music_disc_relic", "count": 1, "at": 1789953650.5, "food": 20, "health": 20.0, "held": "minecraft:music_disc_relic"}
+{"event": "lost", "item": "minecraft:stripped_birch_log", "count": 1, "at": 1789953650.5, "food": 20, "health": 20.0, "held": "minecraft:music_disc_relic"}
+{"event": "held", "item": "minecraft:music_disc_relic", "at": 1789953650.5, "food": 20, "health": 20.0, "held": "minecraft:music_disc_relic"}
+{"event": "gained", "item": "minecraft:birch_planks", "count": 4, "at": 1789953651.7, "food": 20, "health": 20.0, "held": "minecraft:music_disc_relic"}
+{"event": "held", "item": "minecraft:air", "at": 1789953652.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:music_disc_pigstep", "count": 1, "at": 1789953653.9, "food": 20, "health": 20.0, "held": "minecraft:strider_spawn_egg"}
+{"event": "held", "item": "minecraft:strider_spawn_egg", "at": 1789953653.9, "food": 20, "health": 20.0, "held": "minecraft:strider_spawn_egg"}
+{"event": "held", "item": "minecraft:waxed_exposed_copper_bulb", "at": 1789953655.0, "food": 20, "health": 20.0, "held": "minecraft:waxed_exposed_copper_bulb"}
+{"event": "lost", "item": "minecraft:waxed_exposed_copper_bulb", "count": 1, "at": 1789953656.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953656.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:netherite_sword", "count": 1, "at": 1789953657.2, "food": 20, "health": 20.0, "held": "minecraft:netherite_sword"}
+{"event": "held", "item": "minecraft:netherite_sword", "at": 1789953657.2, "food": 20, "health": 20.0, "held": "minecraft:netherite_sword"}
+{"event": "gained", "item": "minecraft:iron_pickaxe", "count": 2, "at": 1789953659.5, "food": 20, "health": 19.8, "held": "minecraft:netherite_sword"}
+{"event": "gained", "item": "minecraft:bamboo_fence", "count": 1, "at": 1789953659.5, "food": 20, "health": 19.8, "held": "minecraft:netherite_sword"}
+{"event": "gained", "item": "minecraft:weathered_copper_golem_statue", "count": 1, "at": 1789953659.5, "food": 20, "health": 19.8, "held": "minecraft:netherite_sword"}
+{"event": "held", "item": "minecraft:iron_pickaxe", "at": 1789953660.6, "food": 20, "health": 20.0, "held": "minecraft:iron_pickaxe"}
+{"event": "held", "item": "minecraft:birch_planks", "at": 1789953661.8, "food": 20, "health": 20.0, "held": "minecraft:birch_planks"}
+{"event": "gained", "item": "minecraft:acacia_fence_gate", "count": 1, "at": 1789953662.9, "food": 20, "health": 20.0, "held": "minecraft:birch_planks"}
+{"event": "lost", "item": "minecraft:birch_planks", "count": 2, "at": 1789953664.0, "food": 20, "health": 20.0, "held": "minecraft:birch_planks"}
+{"event": "lost", "item": "minecraft:birch_planks", "count": 2, "at": 1789953665.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953665.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:lime_harness", "count": 1, "at": 1789953666.3, "food": 20, "health": 20.0, "held": "minecraft:weathered_copper_golem_statue"}
+{"event": "held", "item": "minecraft:weathered_copper_golem_statue", "at": 1789953666.3, "food": 20, "health": 20.0, "held": "minecraft:weathered_copper_golem_statue"}
+{"event": "gained", "item": "minecraft:dark_oak_planks", "count": 1, "at": 1789953668.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953668.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:weathered_copper_golem_statue", "count": 1, "at": 1789953669.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:cyan_glazed_terracotta", "count": 1, "at": 1789953671.8, "food": 20, "health": 20.0, "held": "minecraft:cyan_glazed_terracotta"}
+{"event": "held", "item": "minecraft:cyan_glazed_terracotta", "at": 1789953671.8, "food": 20, "health": 20.0, "held": "minecraft:cyan_glazed_terracotta"}
+{"event": "gained", "item": "minecraft:jungle_door", "count": 1, "at": 1789953674.9, "food": 20, "health": 20.0, "held": "minecraft:cyan_glazed_terracotta"}
+{"event": "lost", "item": "minecraft:cyan_glazed_terracotta", "count": 1, "at": 1789953677.1, "food": 20, "health": 20.0, "held": "minecraft:iron_pickaxe"}
+{"event": "held", "item": "minecraft:iron_pickaxe", "at": 1789953677.1, "food": 20, "health": 20.0, "held": "minecraft:iron_pickaxe"}
+{"event": "gained", "item": "minecraft:lime_wool", "count": 1, "at": 1789953678.2, "food": 20, "health": 20.0, "held": "minecraft:netherite_sword"}
+{"event": "lost", "item": "minecraft:music_disc_pigstep", "count": 1, "at": 1789953678.2, "food": 20, "health": 20.0, "held": "minecraft:netherite_sword"}
+{"event": "held", "item": "minecraft:netherite_sword", "at": 1789953678.2, "food": 20, "health": 20.0, "held": "minecraft:netherite_sword"}
+{"event": "lost", "item": "minecraft:music_disc_relic", "count": 1, "at": 1789953679.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953679.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:waxed_exposed_copper_door", "count": 1, "at": 1789953680.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:bamboo_fence", "count": 1, "at": 1789953680.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:iron_pickaxe", "count": 1, "at": 1789953681.6, "food": 20, "health": 20.0, "held": "minecraft:lime_wool"}
+{"event": "held", "item": "minecraft:lime_wool", "at": 1789953681.6, "food": 20, "health": 20.0, "held": "minecraft:lime_wool"}
+{"event": "lost", "item": "minecraft:lime_harness", "count": 1, "at": 1789953682.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953682.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:weathered_copper_bars", "count": 1, "at": 1789953683.8, "food": 20, "health": 20.0, "held": "minecraft:strider_spawn_egg"}
+{"event": "held", "item": "minecraft:strider_spawn_egg", "at": 1789953683.8, "food": 20, "health": 20.0, "held": "minecraft:strider_spawn_egg"}
+{"event": "lost", "item": "minecraft:strider_spawn_egg", "count": 1, "at": 1789953684.9, "food": 20, "health": 20.0, "held": "minecraft:weathered_copper_bars"}
+{"event": "held", "item": "minecraft:weathered_copper_bars", "at": 1789953684.9, "food": 20, "health": 20.0, "held": "minecraft:weathered_copper_bars"}
+{"event": "gained", "item": "minecraft:iron_hoe", "count": 1, "at": 1789953687.2, "food": 20, "health": 20.0, "held": "minecraft:weathered_copper_bars"}
+{"event": "gained", "item": "minecraft:warped_hyphae", "count": 1, "at": 1789953689.4, "food": 20, "health": 20.0, "held": "minecraft:lime_wool"}
+{"event": "lost", "item": "minecraft:weathered_copper_bars", "count": 1, "at": 1789953689.4, "food": 20, "health": 20.0, "held": "minecraft:lime_wool"}
+{"event": "held", "item": "minecraft:lime_wool", "at": 1789953689.4, "food": 20, "health": 20.0, "held": "minecraft:lime_wool"}
+{"event": "lost", "item": "minecraft:lime_wool", "count": 1, "at": 1789953690.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953690.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:warped_hyphae", "at": 1789953691.7, "food": 20, "health": 20.0, "held": "minecraft:warped_hyphae"}
+{"event": "gained", "item": "minecraft:pink_glazed_terracotta", "count": 1, "at": 1789953692.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:warped_hyphae", "count": 1, "at": 1789953692.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953692.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:warped_planks", "count": 4, "at": 1789953693.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:warped_planks", "count": 4, "at": 1789953695.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:warped_planks", "count": 4, "at": 1789953696.2, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "held", "item": "minecraft:warped_planks", "at": 1789953696.2, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "gained", "item": "minecraft:end_stone_brick_slab", "count": 1, "at": 1789953698.4, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "gained", "item": "minecraft:oak_planks", "count": 1, "at": 1789953698.4, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "lost", "item": "minecraft:waxed_exposed_copper_door", "count": 1, "at": 1789953698.4, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "lost", "item": "minecraft:acacia_fence_gate", "count": 1, "at": 1789953699.5, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "lost", "item": "minecraft:jungle_door", "count": 1, "at": 1789953700.7, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "gained", "item": "minecraft:light_gray_glazed_terracotta", "count": 1, "at": 1789953701.8, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "lost", "item": "minecraft:warped_planks", "count": 2, "at": 1789953704.0, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "gained", "item": "minecraft:magenta_shulker_box", "count": 1, "at": 1789953705.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:warped_planks", "count": 2, "at": 1789953705.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953705.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:oak_planks", "at": 1789953706.2, "food": 20, "health": 20.0, "held": "minecraft:oak_planks"}
+{"event": "gained", "item": "minecraft:green_bundle", "count": 1, "at": 1789953707.3, "food": 20, "health": 20.0, "held": "minecraft:pink_glazed_terracotta"}
+{"event": "lost", "item": "minecraft:oak_planks", "count": 1, "at": 1789953707.3, "food": 20, "health": 20.0, "held": "minecraft:pink_glazed_terracotta"}
+{"event": "held", "item": "minecraft:pink_glazed_terracotta", "at": 1789953707.3, "food": 20, "health": 20.0, "held": "minecraft:pink_glazed_terracotta"}
+{"event": "lost", "item": "minecraft:pink_glazed_terracotta", "count": 1, "at": 1789953708.5, "food": 20, "health": 20.0, "held": "minecraft:light_gray_glazed_terracotta"}
+{"event": "held", "item": "minecraft:light_gray_glazed_terracotta", "at": 1789953708.5, "food": 20, "health": 20.0, "held": "minecraft:light_gray_glazed_terracotta"}
+{"event": "lost", "item": "minecraft:light_gray_glazed_terracotta", "count": 1, "at": 1789953709.6, "food": 20, "health": 20.0, "held": "minecraft:end_stone_brick_slab"}
+{"event": "held", "item": "minecraft:end_stone_brick_slab", "at": 1789953709.6, "food": 20, "health": 20.0, "held": "minecraft:end_stone_brick_slab"}
+{"event": "gained", "item": "minecraft:crimson_pressure_plate", "count": 1, "at": 1789953710.7, "food": 20, "health": 20.0, "held": "minecraft:magenta_shulker_box"}
+{"event": "held", "item": "minecraft:magenta_shulker_box", "at": 1789953710.7, "food": 20, "health": 20.0, "held": "minecraft:magenta_shulker_box"}
+{"event": "lost", "item": "minecraft:magenta_shulker_box", "count": 1, "at": 1789953712.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953712.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:warped_stem", "count": 1, "at": 1789953714.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:crimson_pressure_plate", "count": 1, "at": 1789953715.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:warped_stem", "count": 1, "at": 1789953716.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:oxidized_copper_chain", "count": 1, "at": 1789953717.4, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "gained", "item": "minecraft:warped_planks", "count": 4, "at": 1789953717.4, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "held", "item": "minecraft:warped_planks", "at": 1789953717.4, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "gained", "item": "minecraft:cut_sandstone_slab", "count": 1, "at": 1789953719.6, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "gained", "item": "minecraft:lilac", "count": 1, "at": 1789953723.0, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "lost", "item": "minecraft:warped_planks", "count": 1, "at": 1789953724.1, "food": 20, "health": 20.0, "held": "minecraft:warped_planks"}
+{"event": "lost", "item": "minecraft:warped_planks", "count": 2, "at": 1789953725.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953725.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:yellow_glazed_terracotta", "count": 1, "at": 1789953726.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:warped_planks", "count": 1, "at": 1789953726.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:cut_sandstone_slab", "at": 1789953727.5, "food": 20, "health": 20.0, "held": "minecraft:cut_sandstone_slab"}
+{"event": "gained", "item": "minecraft:purple_stained_glass_pane", "count": 1, "at": 1789953728.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:cut_sandstone_slab", "count": 1, "at": 1789953728.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953728.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:iron_hoe", "at": 1789953729.8, "food": 20, "health": 20.0, "held": "minecraft:iron_hoe"}
+{"event": "lost", "item": "minecraft:end_stone_brick_slab", "count": 1, "at": 1789953730.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953730.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:nether_quartz_ore", "count": 1, "at": 1789953732.0, "food": 20, "health": 20.0, "held": "minecraft:nether_quartz_ore"}
+{"event": "held", "item": "minecraft:nether_quartz_ore", "at": 1789953732.0, "food": 20, "health": 20.0, "held": "minecraft:nether_quartz_ore"}
+{"event": "lost", "item": "minecraft:nether_quartz_ore", "count": 1, "at": 1789953733.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953733.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:purpur_block", "count": 1, "at": 1789953735.4, "food": 20, "health": 20.0, "held": "minecraft:purpur_block"}
+{"event": "held", "item": "minecraft:purpur_block", "at": 1789953735.4, "food": 20, "health": 20.0, "held": "minecraft:purpur_block"}
+{"event": "lost", "item": "minecraft:purpur_block", "count": 1, "at": 1789953736.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953736.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:quartz_bricks", "count": 1, "at": 1789953737.6, "food": 20, "health": 20.0, "held": "minecraft:iron_hoe"}
+{"event": "held", "item": "minecraft:iron_hoe", "at": 1789953737.6, "food": 20, "health": 20.0, "held": "minecraft:iron_hoe"}
+{"event": "held", "item": "minecraft:oxidized_copper_chain", "at": 1789953738.7, "food": 20, "health": 20.0, "held": "minecraft:oxidized_copper_chain"}
+{"event": "lost", "item": "minecraft:oxidized_copper_chain", "count": 1, "at": 1789953739.9, "food": 20, "health": 20.0, "held": "minecraft:purple_stained_glass_pane"}
+{"event": "held", "item": "minecraft:purple_stained_glass_pane", "at": 1789953739.9, "food": 20, "health": 20.0, "held": "minecraft:purple_stained_glass_pane"}
+{"event": "gained", "item": "minecraft:waxed_weathered_copper", "count": 1, "at": 1789953741.0, "food": 20, "health": 20.0, "held": "minecraft:purple_stained_glass_pane"}
+{"event": "lost", "item": "minecraft:purple_stained_glass_pane", "count": 1, "at": 1789953742.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953742.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:waxed_weathered_copper", "at": 1789953743.3, "food": 20, "health": 20.0, "held": "minecraft:waxed_weathered_copper"}
+{"event": "gained", "item": "minecraft:cracked_deepslate_tiles", "count": 1, "at": 1789953744.4, "food": 20, "health": 20.0, "held": "minecraft:waxed_weathered_copper"}
+{"event": "gained", "item": "minecraft:brown_mushroom_block", "count": 1, "at": 1789953746.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:waxed_weathered_copper", "count": 1, "at": 1789953746.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953746.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:lilac", "at": 1789953747.7, "food": 20, "health": 20.0, "held": "minecraft:lilac"}
+{"event": "held", "item": "minecraft:cracked_deepslate_tiles", "at": 1789953748.9, "food": 20, "health": 20.0, "held": "minecraft:cracked_deepslate_tiles"}
+{"event": "gained", "item": "minecraft:cod_spawn_egg", "count": 1, "at": 1789953750.0, "food": 20, "health": 20.0, "held": "minecraft:brown_mushroom_block"}
+{"event": "lost", "item": "minecraft:cracked_deepslate_tiles", "count": 1, "at": 1789953750.0, "food": 20, "health": 20.0, "held": "minecraft:brown_mushroom_block"}
+{"event": "held", "item": "minecraft:brown_mushroom_block", "at": 1789953750.0, "food": 20, "health": 20.0, "held": "minecraft:brown_mushroom_block"}
+{"event": "lost", "item": "minecraft:brown_mushroom_block", "count": 1, "at": 1789953752.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953752.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:skeleton_horse_spawn_egg", "count": 1, "at": 1789953753.4, "food": 20, "health": 20.0, "held": "minecraft:skeleton_horse_spawn_egg"}
+{"event": "held", "item": "minecraft:skeleton_horse_spawn_egg", "at": 1789953753.4, "food": 20, "health": 20.0, "held": "minecraft:skeleton_horse_spawn_egg"}
+{"event": "gained", "item": "minecraft:melon_seeds", "count": 1, "at": 1789953755.6, "food": 20, "health": 20.0, "held": "minecraft:skeleton_horse_spawn_egg"}
+{"event": "lost", "item": "minecraft:skeleton_horse_spawn_egg", "count": 1, "at": 1789953756.7, "food": 20, "health": 20.0, "held": "minecraft:iron_pickaxe"}
+{"event": "held", "item": "minecraft:iron_pickaxe", "at": 1789953756.7, "food": 20, "health": 20.0, "held": "minecraft:iron_pickaxe"}
+{"event": "held", "item": "minecraft:cod_spawn_egg", "at": 1789953757.9, "food": 20, "health": 20.0, "held": "minecraft:cod_spawn_egg"}
+{"event": "gained", "item": "minecraft:shulker_shell", "count": 1, "at": 1789953759.0, "food": 20, "health": 20.0, "held": "minecraft:melon_seeds"}
+{"event": "lost", "item": "minecraft:cod_spawn_egg", "count": 1, "at": 1789953759.0, "food": 20, "health": 20.0, "held": "minecraft:melon_seeds"}
+{"event": "held", "item": "minecraft:melon_seeds", "at": 1789953759.0, "food": 20, "health": 20.0, "held": "minecraft:melon_seeds"}
+{"event": "lost", "item": "minecraft:melon_seeds", "count": 1, "at": 1789953760.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953760.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:shulker_shell", "count": 1, "at": 1789953761.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:cobbled_deepslate_wall", "count": 1, "at": 1789953762.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:lilac", "count": 1, "at": 1789953762.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:brush", "count": 1, "at": 1789953764.6, "food": 20, "health": 20.0, "held": "minecraft:yellow_glazed_terracotta"}
+{"event": "to_hotbar", "item": "minecraft:dark_oak_planks", "slot": 6, "at": 1789953764.6, "food": 20, "health": 20.0, "held": "minecraft:yellow_glazed_terracotta"}
+{"event": "to_hotbar", "item": "minecraft:yellow_glazed_terracotta", "slot": 7, "at": 1789953764.6, "food": 20, "health": 20.0, "held": "minecraft:yellow_glazed_terracotta"}
+{"event": "held", "item": "minecraft:yellow_glazed_terracotta", "at": 1789953764.6, "food": 20, "health": 20.0, "held": "minecraft:yellow_glazed_terracotta"}
+{"event": "lost", "item": "minecraft:yellow_glazed_terracotta", "count": 1, "at": 1789953765.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953765.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:iron_pickaxe", "at": 1789953766.9, "food": 20, "health": 20.0, "held": "minecraft:iron_pickaxe"}
+{"event": "gained", "item": "minecraft:goat_spawn_egg", "count": 1, "at": 1789953768.0, "food": 20, "health": 20.0, "held": "minecraft:cobbled_deepslate_wall"}
+{"event": "held", "item": "minecraft:cobbled_deepslate_wall", "at": 1789953768.0, "food": 20, "health": 20.0, "held": "minecraft:cobbled_deepslate_wall"}
+{"event": "gained", "item": "minecraft:purple_concrete", "count": 1, "at": 1789953771.4, "food": 20, "health": 20.0, "held": "minecraft:goat_spawn_egg"}
+{"event": "lost", "item": "minecraft:cobbled_deepslate_wall", "count": 1, "at": 1789953771.4, "food": 20, "health": 20.0, "held": "minecraft:goat_spawn_egg"}
+{"event": "held", "item": "minecraft:goat_spawn_egg", "at": 1789953771.4, "food": 20, "health": 20.0, "held": "minecraft:goat_spawn_egg"}
+{"event": "held", "item": "minecraft:dark_oak_planks", "at": 1789953772.5, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "gained", "item": "minecraft:jungle_fence_gate", "count": 1, "at": 1789953773.6, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_planks"}
+{"event": "lost", "item": "minecraft:dark_oak_planks", "count": 1, "at": 1789953774.7, "food": 20, "health": 20.0, "held": "minecraft:goat_spawn_egg"}
+{"event": "held", "item": "minecraft:goat_spawn_egg", "at": 1789953774.7, "food": 20, "health": 20.0, "held": "minecraft:goat_spawn_egg"}
+{"event": "lost", "item": "minecraft:goat_spawn_egg", "count": 1, "at": 1789953775.8, "food": 20, "health": 20.0, "held": "minecraft:netherite_sword"}
+{"event": "held", "item": "minecraft:netherite_sword", "at": 1789953775.8, "food": 20, "health": 20.0, "held": "minecraft:netherite_sword"}
+{"event": "gained", "item": "minecraft:waxed_copper_door", "count": 1, "at": 1789953777.0, "food": 20, "health": 20.0, "held": "minecraft:waxed_copper_door"}
+{"event": "lost", "item": "minecraft:brush", "count": 1, "at": 1789953777.0, "food": 20, "health": 20.0, "held": "minecraft:waxed_copper_door"}
+{"event": "held", "item": "minecraft:waxed_copper_door", "at": 1789953777.0, "food": 20, "health": 20.0, "held": "minecraft:waxed_copper_door"}
+{"event": "held", "item": "minecraft:quartz_bricks", "at": 1789953778.1, "food": 20, "health": 20.0, "held": "minecraft:quartz_bricks"}
+{"event": "gained", "item": "minecraft:red_tulip", "count": 1, "at": 1789953780.3, "food": 20, "health": 20.0, "held": "minecraft:quartz_bricks"}
+{"event": "gained", "item": "minecraft:weathered_copper_lantern", "count": 1, "at": 1789953782.6, "food": 20, "health": 20.0, "held": "minecraft:quartz_bricks"}
+{"event": "lost", "item": "minecraft:quartz_bricks", "count": 1, "at": 1789953784.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953784.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:red_stained_glass", "count": 1, "at": 1789953785.9, "food": 20, "health": 15.5, "held": "minecraft:red_stained_glass"}
+{"event": "held", "item": "minecraft:red_stained_glass", "at": 1789953785.9, "food": 20, "health": 15.5, "held": "minecraft:red_stained_glass"}
+{"event": "hurt", "to": 15.5, "at": 1789953785.9, "food": 20, "health": 15.5, "held": "minecraft:red_stained_glass"}
+{"event": "gained", "item": "minecraft:warden_spawn_egg", "count": 1, "at": 1789953789.3, "food": 20, "health": 16.7, "held": "minecraft:red_stained_glass"}
+{"event": "lost", "item": "minecraft:red_stained_glass", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:netherite_sword", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:green_bundle", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:iron_hoe", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:iron_pickaxe", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:jungle_fence_gate", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:waxed_copper_door", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:red_tulip", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:weathered_copper_lantern", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:purple_concrete", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:warden_spawn_egg", "count": 1, "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953791.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:rabbit_foot", "count": 1, "at": 1789953792.6, "food": 20, "health": 20.0, "held": "minecraft:rabbit_foot"}
+{"event": "held", "item": "minecraft:rabbit_foot", "at": 1789953792.6, "food": 20, "health": 20.0, "held": "minecraft:rabbit_foot"}
+{"event": "gained", "item": "minecraft:rabbit_foot", "count": 1, "at": 1789953796.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "to_hotbar", "item": "minecraft:rabbit_foot", "slot": 8, "at": 1789953796.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953796.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953801.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:pitcher_plant", "count": 1, "at": 1789953806.5, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:pitcher_plant", "count": 1, "at": 1789953807.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:brown_bundle", "count": 1, "at": 1789953809.9, "food": 20, "health": 20.0, "held": "minecraft:brown_bundle"}
+{"event": "held", "item": "minecraft:brown_bundle", "at": 1789953809.9, "food": 20, "health": 20.0, "held": "minecraft:brown_bundle"}
+{"event": "lost", "item": "minecraft:brown_bundle", "count": 1, "at": 1789953811.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953811.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:dark_oak_button", "count": 1, "at": 1789953813.2, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_button"}
+{"event": "held", "item": "minecraft:dark_oak_button", "at": 1789953813.2, "food": 20, "health": 20.0, "held": "minecraft:dark_oak_button"}
+{"event": "lost", "item": "minecraft:dark_oak_button", "count": 1, "at": 1789953814.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953814.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:nether_brick_stairs", "count": 1, "at": 1789953815.5, "food": 20, "health": 20.0, "held": "minecraft:nether_brick_stairs"}
+{"event": "held", "item": "minecraft:nether_brick_stairs", "at": 1789953815.5, "food": 20, "health": 20.0, "held": "minecraft:nether_brick_stairs"}
+{"event": "gained", "item": "minecraft:music_disc_blocks", "count": 1, "at": 1789953818.8, "food": 20, "health": 20.0, "held": "minecraft:music_disc_blocks"}
+{"event": "lost", "item": "minecraft:nether_brick_stairs", "count": 1, "at": 1789953818.8, "food": 20, "health": 20.0, "held": "minecraft:music_disc_blocks"}
+{"event": "held", "item": "minecraft:music_disc_blocks", "at": 1789953818.8, "food": 20, "health": 20.0, "held": "minecraft:music_disc_blocks"}
+{"event": "lost", "item": "minecraft:music_disc_blocks", "count": 1, "at": 1789953819.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953819.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:gray_bed", "count": 1, "at": 1789953822.2, "food": 20, "health": 20.0, "held": "minecraft:gray_bed"}
+{"event": "held", "item": "minecraft:gray_bed", "at": 1789953822.2, "food": 20, "health": 20.0, "held": "minecraft:gray_bed"}
+{"event": "gained", "item": "minecraft:wooden_axe", "count": 1, "at": 1789953824.4, "food": 20, "health": 20.0, "held": "minecraft:gray_bed"}
+{"event": "lost", "item": "minecraft:gray_bed", "count": 1, "at": 1789953825.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953825.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:brown_bundle", "count": 1, "at": 1789953827.8, "food": 20, "health": 20.0, "held": "minecraft:wooden_axe"}
+{"event": "held", "item": "minecraft:wooden_axe", "at": 1789953827.8, "food": 20, "health": 20.0, "held": "minecraft:wooden_axe"}
+{"event": "lost", "item": "minecraft:brown_bundle", "count": 1, "at": 1789953831.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:wooden_axe", "count": 1, "at": 1789953831.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953831.2, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953837.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953845.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:amethyst_cluster", "count": 1, "at": 1789953851.4, "food": 20, "health": 20.0, "held": "minecraft:amethyst_cluster"}
+{"event": "held", "item": "minecraft:amethyst_cluster", "at": 1789953851.4, "food": 20, "health": 20.0, "held": "minecraft:amethyst_cluster"}
+{"event": "gained", "item": "minecraft:exposed_cut_copper_stairs", "count": 1, "at": 1789953854.7, "food": 20, "health": 20.0, "held": "minecraft:exposed_cut_copper_stairs"}
+{"event": "lost", "item": "minecraft:amethyst_cluster", "count": 1, "at": 1789953854.7, "food": 20, "health": 20.0, "held": "minecraft:exposed_cut_copper_stairs"}
+{"event": "held", "item": "minecraft:exposed_cut_copper_stairs", "at": 1789953854.7, "food": 20, "health": 20.0, "held": "minecraft:exposed_cut_copper_stairs"}
+{"event": "lost", "item": "minecraft:exposed_cut_copper_stairs", "count": 1, "at": 1789953855.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953855.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:acacia_sapling", "count": 1, "at": 1789953857.0, "food": 20, "health": 20.0, "held": "minecraft:acacia_sapling"}
+{"event": "held", "item": "minecraft:acacia_sapling", "at": 1789953857.0, "food": 20, "health": 20.0, "held": "minecraft:acacia_sapling"}
+{"event": "lost", "item": "minecraft:acacia_sapling", "count": 1, "at": 1789953858.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953858.1, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:bamboo_fence", "count": 1, "at": 1789953860.3, "food": 20, "health": 20.0, "held": "minecraft:bamboo_fence"}
+{"event": "held", "item": "minecraft:bamboo_fence", "at": 1789953860.3, "food": 20, "health": 20.0, "held": "minecraft:bamboo_fence"}
+{"event": "gained", "item": "minecraft:bread", "count": 1, "at": 1789953863.7, "food": 20, "health": 20.0, "held": "minecraft:bread"}
+{"event": "lost", "item": "minecraft:bamboo_fence", "count": 1, "at": 1789953863.7, "food": 20, "health": 20.0, "held": "minecraft:bread"}
+{"event": "held", "item": "minecraft:bread", "at": 1789953863.7, "food": 20, "health": 20.0, "held": "minecraft:bread"}
+{"event": "held", "item": "minecraft:air", "at": 1789953864.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:bamboo_trapdoor", "count": 1, "at": 1789953865.9, "food": 20, "health": 20.0, "held": "minecraft:bamboo_trapdoor"}
+{"event": "held", "item": "minecraft:bamboo_trapdoor", "at": 1789953865.9, "food": 20, "health": 20.0, "held": "minecraft:bamboo_trapdoor"}
+{"event": "lost", "item": "minecraft:bamboo_trapdoor", "count": 1, "at": 1789953867.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953867.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:spruce_pressure_plate", "count": 1, "at": 1789953869.2, "food": 20, "health": 20.0, "held": "minecraft:spruce_pressure_plate"}
+{"event": "held", "item": "minecraft:spruce_pressure_plate", "at": 1789953869.2, "food": 20, "health": 20.0, "held": "minecraft:spruce_pressure_plate"}
+{"event": "gained", "item": "minecraft:player_head", "count": 1, "at": 1789953872.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:spruce_pressure_plate", "count": 1, "at": 1789953872.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953872.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:player_head", "count": 1, "at": 1789953873.7, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:orange_wool", "count": 1, "at": 1789953874.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:oak_fence_gate", "count": 1, "at": 1789953878.2, "food": 20, "health": 20.0, "held": "minecraft:oak_fence_gate"}
+{"event": "held", "item": "minecraft:oak_fence_gate", "at": 1789953878.2, "food": 20, "health": 20.0, "held": "minecraft:oak_fence_gate"}
+{"event": "lost", "item": "minecraft:oak_fence_gate", "count": 1, "at": 1789953880.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953880.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:leather_boots", "count": 1, "at": 1789953881.5, "food": 20, "health": 19.0, "held": "minecraft:leather_boots"}
+{"event": "held", "item": "minecraft:leather_boots", "at": 1789953881.5, "food": 20, "health": 19.0, "held": "minecraft:leather_boots"}
+{"event": "hurt", "to": 19.0, "at": 1789953881.5, "food": 20, "health": 19.0, "held": "minecraft:leather_boots"}
+{"event": "lost", "item": "minecraft:bread", "count": 1, "at": 1789953883.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:orange_wool", "count": 1, "at": 1789953883.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:leather_boots", "count": 1, "at": 1789953883.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953883.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953890.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:rabbit_foot", "count": 2, "at": 1789953895.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:light_gray_carpet", "count": 1, "at": 1789953900.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:light_gray_carpet", "at": 1789953903.1, "food": 20, "health": 20.0, "held": "minecraft:light_gray_carpet"}
+{"event": "gained", "item": "minecraft:resin_block", "count": 1, "at": 1789953904.2, "food": 20, "health": 20.0, "held": "minecraft:resin_block"}
+{"event": "lost", "item": "minecraft:light_gray_carpet", "count": 1, "at": 1789953904.2, "food": 20, "health": 20.0, "held": "minecraft:resin_block"}
+{"event": "held", "item": "minecraft:resin_block", "at": 1789953904.2, "food": 20, "health": 20.0, "held": "minecraft:resin_block"}
+{"event": "lost", "item": "minecraft:resin_block", "count": 1, "at": 1789953906.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953906.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:oxidized_copper_grate", "count": 1, "at": 1789953907.6, "food": 20, "health": 20.0, "held": "minecraft:oxidized_copper_grate"}
+{"event": "held", "item": "minecraft:oxidized_copper_grate", "at": 1789953907.6, "food": 20, "health": 20.0, "held": "minecraft:oxidized_copper_grate"}
+{"event": "gained", "item": "minecraft:stripped_pale_oak_wood", "count": 1, "at": 1789953909.8, "food": 20, "health": 20.0, "held": "minecraft:oxidized_copper_grate"}
+{"event": "held", "item": "minecraft:air", "at": 1789953910.9, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:oxidized_copper_grate", "count": 1, "at": 1789953912.0, "food": 20, "health": 20.0, "held": "minecraft:stripped_pale_oak_wood"}
+{"event": "held", "item": "minecraft:stripped_pale_oak_wood", "at": 1789953912.0, "food": 20, "health": 20.0, "held": "minecraft:stripped_pale_oak_wood"}
+{"event": "gained", "item": "minecraft:rotten_flesh", "count": 1, "at": 1789953913.2, "food": 20, "health": 20.0, "held": "minecraft:stripped_pale_oak_wood"}
+{"event": "lost", "item": "minecraft:stripped_pale_oak_wood", "count": 1, "at": 1789953914.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953914.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:pale_oak_planks", "count": 4, "at": 1789953915.4, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:yellow_stained_glass", "count": 1, "at": 1789953916.5, "food": 20, "health": 20.0, "held": "minecraft:yellow_stained_glass"}
+{"event": "held", "item": "minecraft:yellow_stained_glass", "at": 1789953916.5, "food": 20, "health": 20.0, "held": "minecraft:yellow_stained_glass"}
+{"event": "lost", "item": "minecraft:yellow_stained_glass", "count": 1, "at": 1789953917.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953917.6, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:crimson_roots", "count": 1, "at": 1789953918.8, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:pale_oak_planks", "at": 1789953919.9, "food": 20, "health": 20.0, "held": "minecraft:pale_oak_planks"}
+{"event": "lost", "item": "minecraft:pale_oak_planks", "count": 1, "at": 1789953921.0, "food": 20, "health": 20.0, "held": "minecraft:pale_oak_planks"}
+{"event": "gained", "item": "minecraft:light_blue_concrete_powder", "count": 1, "at": 1789953922.1, "food": 20, "health": 20.0, "held": "minecraft:pale_oak_planks"}
+{"event": "lost", "item": "minecraft:pale_oak_planks", "count": 1, "at": 1789953922.1, "food": 20, "health": 20.0, "held": "minecraft:pale_oak_planks"}
+{"event": "lost", "item": "minecraft:pale_oak_planks", "count": 1, "at": 1789953923.2, "food": 20, "health": 20.0, "held": "minecraft:pale_oak_planks"}
+{"event": "lost", "item": "minecraft:pale_oak_planks", "count": 1, "at": 1789953924.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953924.3, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "gained", "item": "minecraft:sculk", "count": 1, "at": 1789953925.4, "food": 20, "health": 20.0, "held": "minecraft:rotten_flesh"}
+{"event": "held", "item": "minecraft:rotten_flesh", "at": 1789953925.4, "food": 20, "health": 20.0, "held": "minecraft:rotten_flesh"}
+{"event": "gained", "item": "minecraft:waxed_oxidized_copper_grate", "count": 1, "at": 1789953928.8, "food": 20, "health": 20.0, "held": "minecraft:rotten_flesh"}
+{"event": "lost", "item": "minecraft:rotten_flesh", "count": 1, "at": 1789953931.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:crimson_roots", "count": 1, "at": 1789953931.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:light_blue_concrete_powder", "count": 1, "at": 1789953931.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:sculk", "count": 1, "at": 1789953931.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "lost", "item": "minecraft:waxed_oxidized_copper_grate", "count": 1, "at": 1789953931.0, "food": 20, "health": 20.0, "held": "minecraft:air"}
+{"event": "held", "item": "minecraft:air", "at": 1789953931.0, "food": 20, "health": 20.0, "held": "minecraft:air"}

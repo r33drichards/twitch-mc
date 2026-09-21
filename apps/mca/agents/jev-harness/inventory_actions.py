@@ -8,6 +8,8 @@ place and is pinned by tests.
 import json
 import time
 
+from gear import better_armor, better_weapon, is_armor, is_weapon
+
 # api:inventoryJson() numbering -> open-screen numbering.
 ARMOR_TO_MENU = {39: 5, 38: 6, 37: 7, 36: 8}      # helmet, chest, legs, boots
 OFFHAND_MENU = 45
@@ -30,6 +32,11 @@ def menu_slot(inventory_slot):
     if slot == 40:
         return OFFHAND_MENU
     raise ValueError(f"no screen slot for inventory slot {slot}")
+
+
+def _same_body_part(a, b):
+    from gear import armor_slot
+    return armor_slot(a) is not None and armor_slot(a) == armor_slot(b)
 
 
 def _ok(what, changed=True, **extra):
@@ -66,10 +73,21 @@ class InventoryActions:
         return _ok("dropped", item=item, count=stack.get("count", 1))
 
     def to_hotbar(self, item, slot):
-        """Put it in a numbered hotbar slot, swapping out whatever is there."""
+        """Put it in a numbered hotbar slot, swapping out whatever is there.
+
+        A weapon only displaces a weapon it actually beats. Jev once answered
+        that a wooden axe belonged in the slot holding a netherite sword, and
+        that comparison is a table rather than a judgement.
+        """
         slot = int(slot)
         if not 0 <= slot <= 8:
             raise InventoryError(f"hotbar slots are 0-8, not {slot}")
+        if is_weapon(item):
+            occupant = next((s.get("id") for s in self._stacks()
+                             if s.get("slot") == slot), None)
+            if not better_weapon(item, occupant):
+                return _ok("kept the better weapon", changed=False,
+                           item=item, instead_of=occupant)
         stack = self._find(item)
         if stack["slot"] == slot:
             return _ok("already in that slot", changed=False, item=item, slot=slot)
@@ -77,10 +95,22 @@ class InventoryActions:
         return _ok("moved to the hotbar", item=item, slot=slot)
 
     def wear(self, item):
-        """Shift-click a piece of armour, which puts it on."""
+        """Shift-click a piece of armour, which puts it on — if it is better.
+
+        Wearing worse armour than you already have on is strictly a loss, and
+        shift-clicking would do it without asking.
+        """
         stack = self._find(item)
         if stack["slot"] in ARMOR_TO_MENU:
             return _ok("already worn", changed=False, item=item)
+        if is_armor(item):
+            worn = {s.get("id") for s in self._stacks()
+                    if s.get("slot") in ARMOR_TO_MENU}
+            same_place = next((w for w in worn
+                               if w and _same_body_part(w, item)), None)
+            if not better_armor(item, same_place):
+                return _ok("worn armour is better", changed=False,
+                           item=item, instead_of=same_place)
         self._click(stack["slot"], "QUICK_MOVE")
         return _ok("worn", item=item)
 
